@@ -34,6 +34,7 @@
   h2{font-size:16px; margin-bottom:8px;}
   .muted{color:var(--muted); font-size:13px; margin-top:8px;}
   .loading{text-align:center; padding:40px; color:var(--muted);}
+  .cancel-btn{width:auto; margin:0; padding:6px 12px; font-size:13px; font-weight:600; background:#fff; border:1px solid var(--border); border-radius:8px; color:#9d0c24;}
 </style>
 </head>
 <body>
@@ -98,8 +99,27 @@ function renderMine(reqs, me){
   if(!me){ box.innerHTML='<span class="muted">Pick your name above to see them.</span>'; return; }
   const sorted = [...(reqs||[])].sort((a,b)=>a.start<b.start?1:-1);
   box.innerHTML = sorted.length
-    ? sorted.map(r=>`<div class="item"><span>${nice(r.start)} to ${nice(r.end)}</span><span class="pill ${r.status}">${r.status}</span></div>`).join('')
+    ? sorted.map(r=>`<div class="item"><span>${nice(r.start)} to ${nice(r.end)}</span>
+        <span style="display:flex;gap:8px;align-items:center">
+          <span class="pill ${r.status}">${r.status}</span>
+          ${r.status==='pending'?`<button class="cancel-btn" onclick="cancelReq('${r.id}')">Cancel</button>`:''}
+        </span></div>`).join('')
     : '<span class="muted">No requests yet.</span>';
+}
+
+async function cancelReq(id){
+  if(!confirm('Cancel this holiday request?')) return;
+  const me = localStorage.getItem('bmc_driver_id');
+  try{
+    const r = await fetch(API + '/cancel', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({staffId: me, id})
+    });
+    const res = await r.json();
+    if(!res.ok) alert(res.error || 'Could not cancel.');
+    await load();
+  }catch(e){ alert('Could not cancel. Check your connection.'); }
 }
 
 async function send(force){

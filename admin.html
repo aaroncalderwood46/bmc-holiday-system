@@ -53,9 +53,22 @@
   .cal-day .dnum{font-weight:700; font-size:12px; margin-bottom:3px;}
   .cal-day.today .dnum{color:var(--red);}
   .cal-day.overlimit{background:#fff0f2; border-color:var(--red);}
-  .cal-chip{display:block; background:var(--black); color:#fff; border-radius:4px; padding:1px 5px; margin-bottom:2px; font-size:10.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-  .cal-chip.pending{background:#d97706;}
+  .cal-chip{display:block; color:#fff; border-radius:4px; padding:2px 6px; margin-bottom:2px; font-size:10.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .cal-chip.pending{opacity:.85; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,.35) 0 4px, transparent 4px 8px); border:1px dashed rgba(0,0,0,.35);}
   .cal-day .limit-flag{position:absolute; top:4px; right:5px; font-size:10px; font-weight:700; color:var(--red);}
+  .cal-day.bankhol{background:#f8f7f2;}
+  .cal-day .bh-tag{display:inline-block; background:#e7e2cf; color:#6b6032; border-radius:4px; font-size:9px; font-weight:700; padding:1px 4px; margin-bottom:2px;}
+  .week-strip{display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-bottom:16px;}
+  .week-day{background:#fff; border:1px solid var(--border); border-radius:10px; padding:8px; font-size:12px; min-height:64px;}
+  .week-day.today{border-color:var(--red);}
+  .week-day .wd-head{font-weight:700; font-size:11px; color:var(--muted); text-transform:uppercase; margin-bottom:4px;}
+  .week-day.today .wd-head{color:var(--red);}
+  .week-day .wd-name{display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:600;}
+  .week-day .wd-none{color:#c9c9cd;}
+  @media(max-width:640px){ .week-strip{grid-template-columns:repeat(4,1fr);} .week-day:nth-child(n+5){display:none;} }
+  .legend{display:flex; gap:14px; flex-wrap:wrap; margin-top:14px; font-size:13px; align-items:center;}
+  .legend .key{display:flex; align-items:center; gap:6px;}
+  .legend .swatch{width:14px; height:14px; border-radius:4px; display:inline-block;}
   .muted{color:var(--muted); font-size:13px;}
   .empty{text-align:center; padding:30px; color:var(--muted);}
   .settings-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px;}
@@ -96,6 +109,10 @@
 
     <!-- REQUESTS -->
     <div class="panel active" id="panel-requests">
+      <div class="card">
+        <h2>Next 7 days</h2>
+        <div class="week-strip" id="weekStrip"></div>
+      </div>
       <div class="card">
         <h2>Pending requests from drivers</h2>
         <div style="overflow-x:auto">
@@ -140,7 +157,8 @@
           <button class="btn-ghost btn-sm" onclick="moveMonth(1)">Next &rarr;</button>
         </div>
         <div class="cal-grid" id="calGrid"></div>
-        <p class="muted" style="margin-top:10px">Black chips are approved, orange are pending. Days highlighted red have hit the daily limit.</p>
+        <div class="legend" id="calLegend"></div>
+        <p class="muted" style="margin-top:10px">Each staff member has their own colour. Striped chips are still pending. Days highlighted red have hit the daily limit.</p>
       </div>
     </div>
 
@@ -151,6 +169,8 @@
         <div class="row">
           <div><label>Name</label><input type="text" id="staffName"></div>
           <div><label>Role</label><select id="staffRole"><option>Driver</option><option>Office</option><option>Mechanic</option><option>Other</option></select></div>
+          <div><label>Email (for approval alerts)</label><input type="email" id="staffEmail" placeholder="optional" style="width:200px"></div>
+          <div><label>Mobile (for approval texts)</label><input type="tel" id="staffMobile" placeholder="07..." style="width:140px"></div>
           <div><label>Annual allowance (days)</label><input type="number" id="staffAllow" value="28" min="0" style="width:100px"></div>
           <button class="btn-red" onclick="addStaff()">Add</button>
         </div>
@@ -159,7 +179,7 @@
         <h2>Team</h2>
         <div style="overflow-x:auto">
         <table>
-          <thead><tr><th>Name</th><th>Role</th><th>Allowance</th><th>Used (approved)</th><th>Remaining</th><th></th></tr></thead>
+          <thead><tr><th>Name</th><th>Role</th><th>Email</th><th>Mobile</th><th>Allowance</th><th>Used (approved)</th><th>Remaining</th><th></th></tr></thead>
           <tbody id="staffTable"></tbody>
         </table>
         </div>
@@ -271,8 +291,24 @@ async function setStatus(id,status){
 async function delRequest(id){ if(confirm('Delete this request?')) await apiAction({action:'deleteRequest', id}); }
 async function addStaff(){
   const name=document.getElementById('staffName').value.trim(); if(!name) return;
-  await apiAction({action:'addStaff', name, role:document.getElementById('staffRole').value, allowance:document.getElementById('staffAllow').value});
+  await apiAction({action:'addStaff', name, role:document.getElementById('staffRole').value,
+    allowance:document.getElementById('staffAllow').value,
+    email:document.getElementById('staffEmail').value.trim(),
+    mobile:document.getElementById('staffMobile').value.trim()});
   document.getElementById('staffName').value='';
+  document.getElementById('staffEmail').value='';
+  document.getElementById('staffMobile').value='';
+}
+async function saveMobile(id){
+  const v=document.getElementById('mb_'+id).value.trim();
+  if(v && !/^0?7\d{9}$|^\+?447\d{9}$/.test(v.replace(/\s/g,''))){
+    alert('That does not look like a UK mobile. Use the 07 format.'); return;
+  }
+  await apiAction({action:'setMobile', id, mobile:v});
+}
+async function saveEmail(id){
+  const v=document.getElementById('em_'+id).value.trim();
+  await apiAction({action:'setEmail', id, email:v});
 }
 async function delStaff(id){ if(confirm('Remove this staff member and all their requests?')) await apiAction({action:'deleteStaff', id}); }
 async function saveSettings(){
@@ -296,7 +332,22 @@ async function adminAdd(){
   document.getElementById('reqNote').value='';
 }
 
+// ---------- bank holidays (Northern Ireland) ----------
+const BANK_HOLS = {
+  '2026-01-01':'New Year','2026-03-17':'St Patrick','2026-04-03':'Good Friday','2026-04-06':'Easter Mon',
+  '2026-05-04':'May Day','2026-05-25':'Spring BH','2026-07-13':'Battle of the Boyne','2026-08-31':'Summer BH',
+  '2026-12-25':'Christmas','2026-12-28':'Boxing Day',
+  '2027-01-01':'New Year','2027-03-17':'St Patrick','2027-03-26':'Good Friday','2027-03-29':'Easter Mon',
+  '2027-05-03':'May Day','2027-05-31':'Spring BH','2027-07-12':'Battle of the Boyne','2027-08-30':'Summer BH',
+  '2027-12-27':'Christmas','2027-12-28':'Boxing Day'
+};
+
 // ---------- calendar ----------
+const STAFF_COLOURS = ['#c8102e','#1d4ed8','#047857','#7c3aed','#b45309','#0e7490','#be185d','#4d7c0f','#6b21a8','#b91c1c','#0369a1','#a16207'];
+function staffColour(id){
+  const i = db.staff.findIndex(s=>s.id===id);
+  return i<0 ? '#555' : STAFF_COLOURS[i % STAFF_COLOURS.length];
+}
 function moveMonth(n){ calDate.setMonth(calDate.getMonth()+n); renderCalendar(); }
 function renderCalendar(){
   const y=calDate.getFullYear(), m=calDate.getMonth();
@@ -313,11 +364,27 @@ function renderCalendar(){
     const appr=off.filter(r=>r.status==='approved');
     const driversOff=appr.filter(r=>(staffById(r.staffId)||{}).role==='Driver').length;
     const over=appr.length>=db.settings.maxAll || (db.settings.maxDrivers>0 && driversOff>=db.settings.maxDrivers);
-    const chips=off.map(r=>`<span class="cal-chip ${r.status}">${(staffById(r.staffId)||{name:'?'}).name.split(' ')[0]}</span>`).join('');
-    html+=`<div class="cal-day ${ds===todayStr?'today':''} ${over&&off.length?'overlimit':''}">
-      <div class="dnum">${d}</div>${over&&off.length?'<span class="limit-flag">FULL</span>':''}${chips}</div>`;
+    // one chip per person per day; approved wins over pending if both exist
+    const byStaff={};
+    off.forEach(r=>{
+      if(!byStaff[r.staffId] || r.status==='approved') byStaff[r.staffId]=r;
+    });
+    const chips=Object.values(byStaff).map(r=>{
+      const p=staffById(r.staffId)||{name:'?'};
+      return `<span class="cal-chip ${r.status}" style="background-color:${staffColour(r.staffId)}">${p.name.split(' ')[0]}</span>`;
+    }).join('');
+    const bh=BANK_HOLS[ds];
+    html+=`<div class="cal-day ${ds===todayStr?'today':''} ${over&&off.length?'overlimit':''} ${bh?'bankhol':''}">
+      <div class="dnum">${d}</div>${over&&off.length?'<span class="limit-flag">FULL</span>':''}
+      ${bh?`<span class="bh-tag">${bh}</span>`:''}${chips}</div>`;
   }
   document.getElementById('calGrid').innerHTML=html;
+
+  // legend: colour per staff member, plus pending pattern key
+  const withHols=db.staff.filter(s=>db.requests.some(r=>r.staffId===s.id && r.status!=='declined'));
+  document.getElementById('calLegend').innerHTML=
+    withHols.map(s=>`<span class="key"><span class="swatch" style="background:${staffColour(s.id)}"></span>${s.name}</span>`).join('')
+    + `<span class="key"><span class="swatch" style="background:#888;background-image:repeating-linear-gradient(45deg, rgba(255,255,255,.35) 0 4px, transparent 4px 8px);border:1px dashed rgba(0,0,0,.35)"></span>Striped = pending</span>`;
 }
 
 // ---------- render ----------
@@ -355,7 +422,12 @@ function renderAll(){
 
   document.getElementById('staffTable').innerHTML=db.staff.map(s=>{
     const used=usedDays(s.id), rem=s.allowance-used;
-    return `<tr><td><b>${s.name}</b></td><td>${s.role}</td><td>${s.allowance}</td><td>${used}</td>
+    return `<tr><td><b>${s.name}</b></td><td>${s.role}</td>
+      <td><span style="display:flex;gap:6px"><input type="email" id="em_${s.id}" value="${s.email||''}" placeholder="none" style="width:170px;padding:6px 8px;font-size:13px">
+        <button class="btn-ghost btn-sm" onclick="saveEmail('${s.id}')">Save</button></span></td>
+      <td><span style="display:flex;gap:6px"><input type="tel" id="mb_${s.id}" value="${s.mobile||''}" placeholder="none" style="width:120px;padding:6px 8px;font-size:13px">
+        <button class="btn-ghost btn-sm" onclick="saveMobile('${s.id}')">Save</button></span></td>
+      <td>${s.allowance}</td><td>${used}</td>
       <td class="bal ${rem<0?'neg':''}">${rem}</td>
       <td><button class="btn-ghost btn-sm" onclick="delStaff('${s.id}')">Remove</button></td></tr>`;
   }).join('');
@@ -369,7 +441,26 @@ function renderAll(){
   document.getElementById('statOffToday').textContent=offOn(fmt(new Date()),false).length;
   document.getElementById('statStaff').textContent=db.staff.length;
 
+  renderWeekStrip();
   renderCalendar();
+}
+
+function renderWeekStrip(){
+  const box=document.getElementById('weekStrip');
+  let html='';
+  const today=new Date();
+  for(let i=0;i<7;i++){
+    const d=new Date(today); d.setDate(d.getDate()+i);
+    const ds=fmt(d);
+    const off=offOn(ds,false);
+    const bh=BANK_HOLS[ds];
+    const names=off.map(r=>`<span class="wd-name" style="color:${staffColour(r.staffId)}">${(staffById(r.staffId)||{name:'?'}).name.split(' ')[0]}</span>`).join('');
+    html+=`<div class="week-day ${i===0?'today':''}">
+      <div class="wd-head">${i===0?'Today':d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric'})}</div>
+      ${bh?`<span class="bh-tag">${bh}</span>`:''}
+      ${names||'<span class="wd-none">All in</span>'}</div>`;
+  }
+  box.innerHTML=html;
 }
 
 document.querySelectorAll('.tab').forEach(t=>{
