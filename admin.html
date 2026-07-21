@@ -57,6 +57,8 @@
   .cal-chip.pending{opacity:.85; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,.35) 0 4px, transparent 4px 8px); border:1px dashed rgba(0,0,0,.35);}
   .cal-day .limit-flag{position:absolute; top:4px; right:5px; font-size:10px; font-weight:700; color:var(--red);}
   .cal-day.bankhol{background:#f8f7f2;}
+  .cal-day.blockout{background:repeating-linear-gradient(45deg,#f4f4f5 0 6px,#ececee 6px 12px);}
+  .cal-day .bo-tag{display:inline-block; background:#3f3f46; color:#fff; border-radius:4px; font-size:9px; font-weight:700; padding:1px 4px; margin-bottom:2px;}
   .cal-day .bh-tag{display:inline-block; background:#e7e2cf; color:#6b6032; border-radius:4px; font-size:9px; font-weight:700; padding:1px 4px; margin-bottom:2px;}
   .week-strip{display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-bottom:16px;}
   .week-day{background:#fff; border:1px solid var(--border); border-radius:10px; padding:8px; font-size:12px; min-height:64px;}
@@ -140,7 +142,7 @@
         <h2>History</h2>
         <div style="overflow-x:auto">
         <table>
-          <thead><tr><th>Staff</th><th>Dates</th><th>Days</th><th>Status</th><th>Note</th><th></th></tr></thead>
+          <thead><tr><th>Staff</th><th>Dates</th><th>Days</th><th>Status</th><th>Decided by</th><th>Note</th><th></th></tr></thead>
           <tbody id="historyTable"></tbody>
         </table>
         </div>
@@ -169,9 +171,9 @@
         <div class="row">
           <div><label>Name</label><input type="text" id="staffName"></div>
           <div><label>Role</label><select id="staffRole"><option>Driver</option><option>Office</option><option>Mechanic</option><option>Other</option></select></div>
-          <div><label>Email (for approval alerts)</label><input type="email" id="staffEmail" placeholder="optional" style="width:200px"></div>
-          <div><label>Mobile (for approval texts)</label><input type="tel" id="staffMobile" placeholder="07..." style="width:140px"></div>
           <div><label>Annual allowance (days)</label><input type="number" id="staffAllow" value="28" min="0" style="width:100px"></div>
+          <div><label>Email (for approval alerts)</label><input type="email" id="staffEmail" placeholder="optional" style="width:200px"></div>
+          <div><label>Mobile (for approval texts)</label><input type="tel" id="staffMobile" placeholder="07... optional" style="width:150px"></div>
           <button class="btn-red" onclick="addStaff()">Add</button>
         </div>
       </div>
@@ -179,7 +181,7 @@
         <h2>Team</h2>
         <div style="overflow-x:auto">
         <table>
-          <thead><tr><th>Name</th><th>Role</th><th>Email</th><th>Mobile</th><th>Allowance</th><th>Used (approved)</th><th>Remaining</th><th></th></tr></thead>
+          <thead><tr><th>Name</th><th>Role</th><th>Email</th><th>Mobile</th><th>Allowance</th><th>Carry-over</th><th>Used (approved)</th><th>Remaining</th><th></th></tr></thead>
           <tbody id="staffTable"></tbody>
         </table>
         </div>
@@ -199,6 +201,17 @@
         <br>
         <button class="btn-red" onclick="saveSettings()">Save rules</button>
         <span class="muted" id="setSaved" style="display:none; margin-left:10px">Saved</span>
+      </div>
+      <div class="card">
+        <h2>Block-out periods (no holiday requests allowed)</h2>
+        <div class="row">
+          <div><label>From</label><input type="date" id="boStart"></div>
+          <div><label>To</label><input type="date" id="boEnd"></div>
+          <div><label>Label</label><input type="text" id="boLabel" placeholder="e.g. Cruise season peak" style="width:200px"></div>
+          <button class="btn-red" onclick="addBlockout()">Add block-out</button>
+        </div>
+        <div style="margin-top:14px" id="boList"></div>
+        <p class="muted" style="margin-top:8px">Drivers cannot submit requests covering these dates. The office can still add holidays manually if needed.</p>
       </div>
       <div class="card">
         <h2>Account</h2>
@@ -286,7 +299,10 @@ async function setStatus(id,status){
     const c=findClashes(r.staffId,r.start,r.end,r.id);
     if(c.length && !confirm(`This clashes with approved holidays on ${c.length} day(s). Approve anyway?`)) return;
   }
-  await apiAction({action:'setStatus', id, status});
+  const who=prompt('Your name (recorded against this decision):', localStorage.getItem('bmc_approver')||'');
+  if(who===null) return;
+  if(who.trim()) localStorage.setItem('bmc_approver', who.trim());
+  await apiAction({action:'setStatus', id, status, decidedBy: who.trim()});
 }
 async function delRequest(id){ if(confirm('Delete this request?')) await apiAction({action:'deleteRequest', id}); }
 async function addStaff(){
@@ -299,18 +315,40 @@ async function addStaff(){
   document.getElementById('staffEmail').value='';
   document.getElementById('staffMobile').value='';
 }
+async function saveEmail(id){
+  const v=document.getElementById('em_'+id).value.trim();
+  if(v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)){
+    alert('That does not look like a valid email.'); return;
+  }
+  await apiAction({action:'setEmail', id, email:v});
+  alert('Email saved.');
+}
 async function saveMobile(id){
   const v=document.getElementById('mb_'+id).value.trim();
-  if(v && !/^0?7\d{9}$|^\+?447\d{9}$/.test(v.replace(/\s/g,''))){
+  if(v && !/^07\d{9}$|^\+?447\d{9}$/.test(v.replace(/\s/g,''))){
     alert('That does not look like a UK mobile. Use the 07 format.'); return;
   }
   await apiAction({action:'setMobile', id, mobile:v});
-}
-async function saveEmail(id){
-  const v=document.getElementById('em_'+id).value.trim();
-  await apiAction({action:'setEmail', id, email:v});
+  alert('Mobile saved.');
 }
 async function delStaff(id){ if(confirm('Remove this staff member and all their requests?')) await apiAction({action:'deleteStaff', id}); }
+async function addBlockout(){
+  const start=document.getElementById('boStart').value;
+  const end=document.getElementById('boEnd').value;
+  const label=document.getElementById('boLabel').value.trim();
+  if(!start||!end||end<start){ alert('Pick a valid date range.'); return; }
+  await apiAction({action:'addBlockout', start, end, label});
+  document.getElementById('boLabel').value='';
+}
+async function delBlockout(id){ if(confirm('Remove this block-out period?')) await apiAction({action:'deleteBlockout', id}); }
+async function saveAllowance(id){
+  await apiAction({action:'setAllowance', id, allowance:document.getElementById('al_'+id).value});
+  alert('Allowance saved.');
+}
+async function saveCarry(id){
+  await apiAction({action:'setCarry', id, carry:document.getElementById('cy_'+id).value});
+  alert('Carry-over saved.');
+}
 async function saveSettings(){
   await apiAction({action:'settings',
     maxAll:document.getElementById('setMaxAll').value,
@@ -374,9 +412,10 @@ function renderCalendar(){
       return `<span class="cal-chip ${r.status}" style="background-color:${staffColour(r.staffId)}">${p.name.split(' ')[0]}</span>`;
     }).join('');
     const bh=BANK_HOLS[ds];
-    html+=`<div class="cal-day ${ds===todayStr?'today':''} ${over&&off.length?'overlimit':''} ${bh?'bankhol':''}">
+    const bo=(db.blockouts||[]).find(b=>ds>=b.start && ds<=b.end);
+    html+=`<div class="cal-day ${ds===todayStr?'today':''} ${over&&off.length?'overlimit':''} ${bh?'bankhol':''} ${bo?'blockout':''}">
       <div class="dnum">${d}</div>${over&&off.length?'<span class="limit-flag">FULL</span>':''}
-      ${bh?`<span class="bh-tag">${bh}</span>`:''}${chips}</div>`;
+      ${bh?`<span class="bh-tag">${bh}</span>`:''}${bo?`<span class="bo-tag">${bo.label||'Blocked'}</span>`:''}${chips}</div>`;
   }
   document.getElementById('calGrid').innerHTML=html;
 
@@ -415,23 +454,35 @@ function renderAll(){
     const p=staffById(r.staffId)||{name:'(removed)'};
     return `<tr><td><b>${p.name}</b></td><td>${niceDate(r.start)} to ${niceDate(r.end)}</td>
       <td>${countDays(r.start,r.end)}</td><td><span class="pill ${r.status}">${r.status}</span></td>
+      <td class="muted">${r.decidedBy?`${r.decidedBy}${r.decidedAt?', '+niceDate(r.decidedAt):''}`:''}</td>
       <td class="muted">${r.note||''}</td>
       <td><button class="btn-ghost btn-sm" onclick="delRequest('${r.id}')">✕</button></td></tr>`;
   }).join('');
   document.getElementById('historyEmpty').style.display=hist.length?'none':'block';
 
   document.getElementById('staffTable').innerHTML=db.staff.map(s=>{
-    const used=usedDays(s.id), rem=s.allowance-used;
+    const used=usedDays(s.id), rem=s.allowance+(s.carry||0)-used;
     return `<tr><td><b>${s.name}</b></td><td>${s.role}</td>
-      <td><span style="display:flex;gap:6px"><input type="email" id="em_${s.id}" value="${s.email||''}" placeholder="none" style="width:170px;padding:6px 8px;font-size:13px">
+      <td><span style="display:flex;gap:6px"><input type="email" id="em_${s.id}" value="${s.email||''}" placeholder="none" style="width:180px;padding:6px 8px;font-size:13px">
         <button class="btn-ghost btn-sm" onclick="saveEmail('${s.id}')">Save</button></span></td>
-      <td><span style="display:flex;gap:6px"><input type="tel" id="mb_${s.id}" value="${s.mobile||''}" placeholder="none" style="width:120px;padding:6px 8px;font-size:13px">
+      <td><span style="display:flex;gap:6px"><input type="tel" id="mb_${s.id}" value="${s.mobile||''}" placeholder="none" style="width:130px;padding:6px 8px;font-size:13px">
         <button class="btn-ghost btn-sm" onclick="saveMobile('${s.id}')">Save</button></span></td>
-      <td>${s.allowance}</td><td>${used}</td>
+      <td><span style="display:flex;gap:6px"><input type="number" id="al_${s.id}" value="${s.allowance}" min="0" style="width:60px;padding:6px 8px;font-size:13px">
+        <button class="btn-ghost btn-sm" onclick="saveAllowance('${s.id}')">Save</button></span></td>
+      <td><span style="display:flex;gap:6px"><input type="number" id="cy_${s.id}" value="${s.carry||0}" min="0" style="width:55px;padding:6px 8px;font-size:13px">
+        <button class="btn-ghost btn-sm" onclick="saveCarry('${s.id}')">Save</button></span></td>
+      <td>${used}</td>
       <td class="bal ${rem<0?'neg':''}">${rem}</td>
       <td><button class="btn-ghost btn-sm" onclick="delStaff('${s.id}')">Remove</button></td></tr>`;
   }).join('');
   document.getElementById('staffEmpty').style.display=db.staff.length?'none':'block';
+
+  document.getElementById('boList').innerHTML=(db.blockouts||[]).length
+    ? db.blockouts.sort((a,b)=>a.start>b.start?1:-1).map(b=>
+        `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:14px">
+          <span><b>${niceDate(b.start)} to ${niceDate(b.end)}</b> ${b.label?'<span class="muted">'+b.label+'</span>':''}</span>
+          <button class="btn-ghost btn-sm" onclick="delBlockout('${b.id}')">Remove</button></div>`).join('')
+    : '<span class="muted">No block-out periods set.</span>';
 
   document.getElementById('setMaxAll').value=db.settings.maxAll;
   document.getElementById('setMaxDrivers').value=db.settings.maxDrivers;
@@ -454,6 +505,7 @@ function renderWeekStrip(){
     const ds=fmt(d);
     const off=offOn(ds,false);
     const bh=BANK_HOLS[ds];
+    const bo=(db.blockouts||[]).find(b=>ds>=b.start && ds<=b.end);
     const names=off.map(r=>`<span class="wd-name" style="color:${staffColour(r.staffId)}">${(staffById(r.staffId)||{name:'?'}).name.split(' ')[0]}</span>`).join('');
     html+=`<div class="week-day ${i===0?'today':''}">
       <div class="wd-head">${i===0?'Today':d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric'})}</div>
