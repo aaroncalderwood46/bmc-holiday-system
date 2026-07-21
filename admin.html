@@ -171,7 +171,7 @@
         <div class="row">
           <div><label>Name</label><input type="text" id="staffName"></div>
           <div><label>Role</label><select id="staffRole"><option>Driver</option><option>Office</option><option>Mechanic</option><option>Other</option></select></div>
-          <div><label>Annual allowance (days)</label><input type="number" id="staffAllow" value="28" min="0" style="width:100px"></div>
+          <div><label>Holidays (days per year)</label><input type="number" id="staffAllow" value="28" min="0" style="width:100px"></div>
           <div><label>Email (for approval alerts)</label><input type="email" id="staffEmail" placeholder="optional" style="width:200px"></div>
           <div><label>Mobile (for approval texts)</label><input type="tel" id="staffMobile" placeholder="07... optional" style="width:150px"></div>
           <button class="btn-red" onclick="addStaff()">Add</button>
@@ -181,7 +181,7 @@
         <h2>Team</h2>
         <div style="overflow-x:auto">
         <table>
-          <thead><tr><th>Name</th><th>Role</th><th>Email</th><th>Mobile</th><th>Allowance</th><th>Carry-over</th><th>Used (approved)</th><th>Remaining</th><th></th></tr></thead>
+          <thead><tr><th>Name</th><th>Role</th><th>Email</th><th>Mobile</th><th>Holidays</th><th>Banked</th><th>Used (approved)</th><th>Remaining</th><th></th></tr></thead>
           <tbody id="staffTable"></tbody>
         </table>
         </div>
@@ -347,7 +347,7 @@ async function saveAllowance(id){
 }
 async function saveCarry(id){
   await apiAction({action:'setCarry', id, carry:document.getElementById('cy_'+id).value});
-  alert('Carry-over saved.');
+  alert('Banked days saved.');
 }
 async function saveSettings(){
   await apiAction({action:'settings',
@@ -461,7 +461,11 @@ function renderAll(){
   document.getElementById('historyEmpty').style.display=hist.length?'none':'block';
 
   document.getElementById('staffTable').innerHTML=db.staff.map(s=>{
-    const used=usedDays(s.id), rem=s.allowance+(s.carry||0)-used;
+    const used=usedDays(s.id);
+    const banked=s.carry||0;
+    const holLeft=Math.max(0, s.allowance-used);
+    const bankLeft=banked-Math.max(0, used-s.allowance);
+    const rem=holLeft+bankLeft;
     return `<tr><td><b>${s.name}</b></td><td>${s.role}</td>
       <td><span style="display:flex;gap:6px"><input type="email" id="em_${s.id}" value="${s.email||''}" placeholder="none" style="width:180px;padding:6px 8px;font-size:13px">
         <button class="btn-ghost btn-sm" onclick="saveEmail('${s.id}')">Save</button></span></td>
@@ -472,7 +476,7 @@ function renderAll(){
       <td><span style="display:flex;gap:6px"><input type="number" id="cy_${s.id}" value="${s.carry||0}" min="0" style="width:55px;padding:6px 8px;font-size:13px">
         <button class="btn-ghost btn-sm" onclick="saveCarry('${s.id}')">Save</button></span></td>
       <td>${used}</td>
-      <td class="bal ${rem<0?'neg':''}">${rem}</td>
+      <td class="bal ${rem<0?'neg':''}"><b>${rem}</b> <span class="muted" style="font-size:12px">(${holLeft} hol${banked?` + ${bankLeft} banked`:''})</span></td>
       <td><button class="btn-ghost btn-sm" onclick="delStaff('${s.id}')">Remove</button></td></tr>`;
   }).join('');
   document.getElementById('staffEmpty').style.display=db.staff.length?'none':'block';
