@@ -454,7 +454,7 @@ function renderAll(){
     const p=staffById(r.staffId)||{name:'(removed)'};
     return `<tr><td><b>${p.name}</b></td><td>${niceDate(r.start)} to ${niceDate(r.end)}</td>
       <td>${countDays(r.start,r.end)}</td><td><span class="pill ${r.status}">${r.status}</span></td>
-      <td class="muted">${r.decidedBy?`${r.decidedBy}${r.decidedAt?', '+niceDate(r.decidedAt):''}`:''}</td>
+      <td class="muted">${r.decidedBy?`${r.decidedBy}${r.decidedAt?', '+niceDate(r.decidedAt.slice(0,10)):''}`:''}</td>
       <td class="muted">${r.note||''}</td>
       <td><button class="btn-ghost btn-sm" onclick="delRequest('${r.id}')">✕</button></td></tr>`;
   }).join('');

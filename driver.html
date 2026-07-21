@@ -76,6 +76,11 @@ const API = 'https://bmc-holiday-requests.aaronc761.workers.dev';
 function parseD(s){ const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); }
 function fmt(d){ return d.toISOString().slice(0,10); }
 function nice(s){ return parseD(s).toLocaleDateString('en-GB',{day:'numeric',month:'short'}); }
+function decidedStamp(iso){
+  const d=new Date(iso);
+  return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})+' '
+    + d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+}
 
 async function load(){
   const me = localStorage.getItem('bmc_driver_id') || '';
@@ -101,7 +106,10 @@ function renderMine(reqs, me){
   box.innerHTML = sorted.length
     ? sorted.map(r=>`<div class="item"><span>${nice(r.start)} to ${nice(r.end)}</span>
         <span style="display:flex;gap:8px;align-items:center">
-          <span class="pill ${r.status}">${r.status}</span>
+          <span style="text-align:right">
+            <span class="pill ${r.status}">${r.status}</span>
+            ${r.decidedAt && r.status!=='pending' ? `<span style="display:block;font-size:11px;color:var(--muted);margin-top:3px">${decidedStamp(r.decidedAt)}</span>`:''}
+          </span>
           ${r.status==='pending'?`<button class="cancel-btn" onclick="cancelReq('${r.id}')">Cancel</button>`:''}
         </span></div>`).join('')
     : '<span class="muted">No requests yet.</span>';
