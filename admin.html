@@ -215,6 +215,15 @@
         <p class="muted" style="margin-top:8px">Drivers cannot submit requests covering these dates. The office can still add holidays manually if needed.</p>
       </div>
       <div class="card">
+        <h2>Data backup</h2>
+        <div class="row">
+          <button class="btn-ghost" onclick="exportData()">Export backup (JSON)</button>
+          <button class="btn-ghost" onclick="document.getElementById('importFile').click()">Import backup</button>
+          <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
+        </div>
+        <p class="muted" style="margin-top:10px">Downloads all staff, requests, block-outs and rules as a file. Keep one somewhere safe every month or so. Import replaces everything with the file's contents.</p>
+      </div>
+      <div class="card">
         <h2>Account</h2>
         <button class="btn-ghost" onclick="logout()">Log out on this device</button>
       </div>
@@ -261,6 +270,28 @@ async function tryLogin(){
   }
 }
 function logout(){ localStorage.removeItem('bmc_admin_key'); location.reload(); }
+
+function exportData(){
+  const blob=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='bmc-holidays-backup-'+fmt(new Date())+'.json';
+  a.click();
+}
+function importData(e){
+  const f=e.target.files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=async ()=>{
+    try{
+      const data=JSON.parse(rd.result);
+      if(!confirm('Replace ALL current data with this backup? This cannot be undone.')) return;
+      await apiAction({action:'restore', data});
+      alert('Backup restored.');
+    }catch(err){ alert('Invalid backup file.'); }
+  };
+  rd.readAsText(f);
+  e.target.value='';
+}
 
 // ---------- helpers ----------
 function fmt(d){ return d.toISOString().slice(0,10); }
