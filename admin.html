@@ -131,6 +131,7 @@
         <div class="row">
           <div><label>Staff member</label><select id="reqStaff"></select></div>
           <div><label>Type</label><select id="reqType2"><option value="holiday">Holidays</option><option value="banked">Banked hours</option><option value="unpaid">Unpaid</option></select></div>
+          <div><label>Day</label><select id="reqHalf2"><option value="">Full day(s)</option><option value="AM">Morning only</option><option value="PM">Afternoon only</option></select></div>
           <div><label>First day off</label><input type="date" id="reqStart"></div>
           <div><label>Last day off</label><input type="date" id="reqEnd"></div>
           <div><label>Note</label><input type="text" id="reqNote" style="width:180px"></div>
@@ -182,7 +183,7 @@
         <h2>Team</h2>
         <div style="overflow-x:auto">
         <table>
-          <thead><tr><th>Name</th><th>Role</th><th>Email</th><th>Mobile</th><th>Holidays</th><th>Banked</th><th>Used (approved)</th><th>Remaining</th><th></th></tr></thead>
+          <thead><tr><th>Name</th><th>Role</th><th>PIN</th><th>Email</th><th>Mobile</th><th>Holidays</th><th>Banked</th><th>Used (approved)</th><th>Remaining</th><th></th></tr></thead>
           <tbody id="staffTable"></tbody>
         </table>
         </div>
@@ -298,7 +299,8 @@ function fmt(d){ return d.toISOString().slice(0,10); }
 function parseD(s){ const [y,m,dd]=s.split('-').map(Number); return new Date(y,m-1,dd); }
 function eachDay(a,b,cb){ let d=parseD(a), end=parseD(b); while(d<=end){ cb(new Date(d)); d.setDate(d.getDate()+1);} }
 function isWeekend(d){ return d.getDay()===0||d.getDay()===6; }
-function countDays(a,b){ let n=0; eachDay(a,b,d=>{ if(db.settings.weekends==='yes'||!isWeekend(d)) n++; }); return n; }
+function countDays(a,b,half){ if(half) return 0.5; let n=0; eachDay(a,b,d=>{ if(db.settings.weekends==='yes'||!isWeekend(d)) n++; }); return n; }
+function dateSpan(r){ return r.half ? niceDate(r.start)+' '+r.half : niceDate(r.start)+' to '+niceDate(r.end); }
 function niceDate(s){ return parseD(s).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}); }
 function staffById(id){ return db.staff.find(s=>s.id===id); }
 function typeBadge(t){
@@ -315,7 +317,7 @@ function offOn(ds, incPending){
 }
 function usedByType(id,type){
   return db.requests.filter(r=>r.staffId===id && r.status==='approved' && (r.type||'holiday')===type)
-    .reduce((n,r)=>n+countDays(r.start,r.end),0);
+    .reduce((n,r)=>n+countDays(r.start,r.end,r.half),0);
 }
 function usedDays(id){
   return usedByType(id,'holiday')+usedByType(id,'banked')+usedByType(id,'unpaid');
@@ -355,6 +357,12 @@ async function addStaff(){
   document.getElementById('staffName').value='';
   document.getElementById('staffEmail').value='';
   document.getElementById('staffMobile').value='';
+}
+async function savePin(id){
+  const v=document.getElementById('pn_'+id).value.trim();
+  if(v && !/^\d{4,6}$/.test(v)){ alert('PIN must be 4 to 6 digits.'); return; }
+  await apiAction({action:'setPin', id, pin:v});
+  alert(v?'PIN saved. Tell them it once, their phone remembers it.':'PIN removed.');
 }
 async function saveEmail(id){
   const v=document.getElementById('em_'+id).value.trim();
@@ -406,7 +414,9 @@ async function adminAdd(){
   if(!staffId||!start||!end||end<start){ out.innerHTML='<div class="clash-box">Pick staff and a valid date range.</div>'; return; }
   const c=findClashes(staffId,start,end,null);
   if(c.length && !confirm(`Clashes on ${c.length} day(s): ${c.slice(0,3).map(x=>niceDate(x.date)).join(', ')}. Add anyway?`)) return;
-  await apiAction({action:'adminRequest', staffId, start, end, note, type:document.getElementById('reqType2').value, status:'approved'});
+  const half2=document.getElementById('reqHalf2').value;
+  if(half2 && start!==end){ out.innerHTML='<div class="clash-box">Half days only work when From and To are the same date.</div>'; return; }
+  await apiAction({action:'adminRequest', staffId, start, end, note, type:document.getElementById('reqType2').value, half:half2||null, status:'approved'});
   out.innerHTML='<div class="clash-box ok">Added.</div>';
   document.getElementById('reqNote').value='';
 }
@@ -450,7 +460,7 @@ function renderCalendar(){
     });
     const chips=Object.values(byStaff).map(r=>{
       const p=staffById(r.staffId)||{name:'?'};
-      return `<span class="cal-chip ${r.status}" style="background-color:${staffColour(r.staffId)}">${p.name.split(' ')[0]}</span>`;
+      return `<span class="cal-chip ${r.status}" style="background-color:${staffColour(r.staffId)}">${p.name.split(' ')[0]}${r.half?' '+r.half:''}</span>`;
     }).join('');
     const bh=BANK_HOLS[ds];
     const bo=(db.blockouts||[]).find(b=>ds>=b.start && ds<=b.end);
@@ -478,8 +488,8 @@ function renderAll(){
     return `<tr>
       <td><b>${p.name}</b></td>
       <td>${typeBadge(r.type)}</td>
-      <td>${niceDate(r.start)} to ${niceDate(r.end)}</td>
-      <td>${countDays(r.start,r.end)}</td>
+      <td>${dateSpan(r)}</td>
+      <td>${countDays(r.start,r.end,r.half)}</td>
       <td>${c.length?`<span class="clash-inline">Clash on ${c.length} day${c.length>1?'s':''}</span>`:'<span style="color:var(--ok);font-weight:600;font-size:12px">Clear</span>'}</td>
       <td class="muted">${r.note||''}</td>
       <td style="white-space:nowrap">
@@ -494,8 +504,8 @@ function renderAll(){
   const hist=db.requests.filter(r=>r.status!=='pending').sort((a,b)=>a.start<b.start?1:-1);
   document.getElementById('historyTable').innerHTML=hist.map(r=>{
     const p=staffById(r.staffId)||{name:'(removed)'};
-    return `<tr><td><b>${p.name}</b></td><td>${typeBadge(r.type)}</td><td>${niceDate(r.start)} to ${niceDate(r.end)}</td>
-      <td>${countDays(r.start,r.end)}</td><td><span class="pill ${r.status}">${r.status}</span></td>
+    return `<tr><td><b>${p.name}</b></td><td>${typeBadge(r.type)}</td><td>${dateSpan(r)}</td>
+      <td>${countDays(r.start,r.end,r.half)}</td><td><span class="pill ${r.status}">${r.status}</span></td>
       <td class="muted">${r.decidedBy?`${r.decidedBy}${r.decidedAt?', '+niceDate(r.decidedAt.slice(0,10)):''}`:''}</td>
       <td class="muted">${r.note||''}</td>
       <td><button class="btn-ghost btn-sm" onclick="delRequest('${r.id}')">✕</button></td></tr>`;
@@ -512,6 +522,8 @@ function renderAll(){
     const bankLeft=banked-usedBank;
     const rem=holLeft+bankLeft;
     return `<tr><td><b>${s.name}</b></td><td>${s.role}</td>
+      <td><span style="display:flex;gap:6px"><input type="text" inputmode="numeric" id="pn_${s.id}" value="${s.pin||''}" placeholder="none" maxlength="6" style="width:60px;padding:6px 8px;font-size:13px">
+        <button class="btn-ghost btn-sm" onclick="savePin('${s.id}')">Save</button></span></td>
       <td><span style="display:flex;gap:6px"><input type="email" id="em_${s.id}" value="${s.email||''}" placeholder="none" style="width:180px;padding:6px 8px;font-size:13px">
         <button class="btn-ghost btn-sm" onclick="saveEmail('${s.id}')">Save</button></span></td>
       <td><span style="display:flex;gap:6px"><input type="tel" id="mb_${s.id}" value="${s.mobile||''}" placeholder="none" style="width:130px;padding:6px 8px;font-size:13px">

@@ -65,6 +65,15 @@
       <label>Last day off</label>
       <input type="date" id="end">
 
+      <div id="halfWrap" style="display:none">
+        <label>How much of the day?</label>
+        <select id="halfSel">
+          <option value="">Full day</option>
+          <option value="AM">Morning only</option>
+          <option value="PM">Afternoon only</option>
+        </select>
+      </div>
+
       <label>Reason (optional)</label>
       <textarea id="note" placeholder="e.g. family wedding"></textarea>
 
@@ -92,15 +101,45 @@ function decidedStamp(iso){
     + d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
 }
 
+function pinFor(id){ return localStorage.getItem('bmc_pin_'+id) || ''; }
+
+function askPin(id, name){
+  const p = prompt('Enter the PIN for ' + name + ' (from the office):');
+  if(p===null) return false;
+  localStorage.setItem('bmc_pin_'+id, p.trim());
+  return true;
+}
+
+function syncHalf(){
+  const st=document.getElementById('start').value, en=document.getElementById('end').value;
+  const w=document.getElementById('halfWrap');
+  if(st && en && st===en){ w.style.display='block'; }
+  else { w.style.display='none'; document.getElementById('halfSel').value=''; }
+}
+document.addEventListener('change', e=>{ if(e.target.id==='start'||e.target.id==='end') syncHalf(); });
+
 async function load(){
   const me = localStorage.getItem('bmc_driver_id') || '';
   try{
-    const r = await fetch(API + '/public' + (me ? '?me=' + encodeURIComponent(me) : ''));
+    const q = me ? '?me=' + encodeURIComponent(me) + '&pin=' + encodeURIComponent(pinFor(me)) : '';
+    const r = await fetch(API + '/public' + q);
     const data = await r.json();
+    if(data.pinRequired && me){
+      const nm=(data.staff.find(s=>s.id===me)||{}).name||'this name';
+      localStorage.removeItem('bmc_pin_'+me);
+      if(askPin(me, nm)) return load();
+    }
     const sel = document.getElementById('who');
     sel.innerHTML = '<option value="">Select your name...</option>' +
       data.staff.map(s=>`<option value="${s.id}" ${s.id===me?'selected':''}>${s.name}</option>`).join('');
-    sel.onchange = ()=>{ localStorage.setItem('bmc_driver_id', sel.value); load(); };
+    sel.onchange = ()=>{
+      localStorage.setItem('bmc_driver_id', sel.value);
+      const chosen = data.staff.find(s=>s.id===sel.value);
+      if(chosen && chosen.hasPin && !pinFor(sel.value)){
+        if(!askPin(sel.value, chosen.name)) return;
+      }
+      load();
+    };
     renderMine(data.myRequests, me);
     document.getElementById('loading').style.display='none';
     document.getElementById('app').style.display='block';
@@ -114,7 +153,7 @@ function renderMine(reqs, me){
   if(!me){ box.innerHTML='<span class="muted">Pick your name above to see them.</span>'; return; }
   const sorted = [...(reqs||[])].sort((a,b)=>a.start<b.start?1:-1);
   box.innerHTML = sorted.length
-    ? sorted.map(r=>`<div class="item"><span>${nice(r.start)} to ${nice(r.end)} <span style="font-size:12px;color:var(--muted)">${{holiday:'Holidays',banked:'Banked',unpaid:'Unpaid'}[r.type]||'Holidays'}</span></span>
+    ? sorted.map(r=>`<div class="item"><span>${r.half?nice(r.start)+' '+r.half:nice(r.start)+' to '+nice(r.end)} <span style="font-size:12px;color:var(--muted)">${{holiday:'Holidays',banked:'Banked',unpaid:'Unpaid'}[r.type]||'Holidays'}</span></span>
         <span style="display:flex;gap:8px;align-items:center">
           <span style="text-align:right">
             <span class="pill ${r.status}">${r.status}</span>
@@ -132,10 +171,11 @@ async function cancelReq(id){
     const r = await fetch(API + '/cancel', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({staffId: me, id})
+      body: JSON.stringify({staffId: me, id, pin: pinFor(me)})
     });
     const res = await r.json();
-    if(!res.ok) alert(res.error || 'Could not cancel.');
+    if(res.error==='pin'){ localStorage.removeItem('bmc_pin_'+me); alert('Wrong PIN. Pick your name again to retry.'); }
+    else if(!res.ok) alert(res.error || 'Could not cancel.');
     await load();
   }catch(e){ alert('Could not cancel. Check your connection.'); }
 }
@@ -158,10 +198,16 @@ async function send(force){
     const r = await fetch(API + '/request', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({staffId:id, start, end, note, type:document.getElementById('reqType').value, force: !!force})
+      body: JSON.stringify({staffId:id, start, end, note, type:document.getElementById('reqType').value, half:document.getElementById('halfSel').value||null, pin:pinFor(id), force: !!force})
     });
     const res = await r.json();
 
+    if(res.error==='pin'){
+      btn.disabled=false; btn.textContent='Send request';
+      localStorage.removeItem('bmc_pin_'+id);
+      msg.className='msg bad'; msg.textContent='Wrong PIN. Pick your name again to retry.';
+      return;
+    }
     if(res.clash){
       btn.disabled=false; btn.textContent='Send request';
       const days = res.clash.slice(0,4).map(nice).join(', ') + (res.clash.length>4 ? ' and more' : '');
