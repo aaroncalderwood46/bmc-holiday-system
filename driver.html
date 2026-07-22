@@ -34,6 +34,7 @@
   .pill.pending{background:#fef3c7; color:#92400e;}
   .pill.approved{background:#dcfce7; color:var(--ok);}
   .pill.declined{background:#fee2e2; color:#9d0c24;}
+  .pill.cancelled{background:#e4e4e7; color:#52525b;}
   h2{font-size:16px; margin-bottom:8px;}
   .muted{color:var(--muted); font-size:13px; margin-top:8px;}
   .loading{text-align:center; padding:40px; color:var(--muted);}
@@ -159,13 +160,17 @@ function renderMine(reqs, me){
             <span class="pill ${r.status}">${r.status}</span>
             ${r.decidedAt && r.status!=='pending' ? `<span style="display:block;font-size:11px;color:var(--muted);margin-top:3px">${decidedStamp(r.decidedAt)}</span>`:''}
           </span>
-          ${r.status==='pending'?`<button class="cancel-btn" onclick="cancelReq('${r.id}')">Cancel</button>`:''}
+          ${r.status==='pending'||(r.status==='approved'&&cancellable(r.start))?`<button class="cancel-btn" onclick="cancelReq('${r.id}','${r.status}')">Cancel</button>`:''}
         </span></div>`).join('')
     : '<span class="muted">No requests yet.</span>';
 }
 
-async function cancelReq(id){
-  if(!confirm('Cancel this holiday request?')) return;
+function cancellable(start){ return parseD(start).getTime() >= Date.now() + 48*3600*1000; }
+async function cancelReq(id, status){
+  const q = status==='approved'
+    ? 'Cancel this APPROVED holiday? The office will be told and the days go back into your entitlement.'
+    : 'Cancel this holiday request?';
+  if(!confirm(q)) return;
   const me = localStorage.getItem('bmc_driver_id');
   try{
     const r = await fetch(API + '/cancel', {
