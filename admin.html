@@ -119,7 +119,7 @@
         <h2>Pending requests from drivers</h2>
         <div style="overflow-x:auto">
         <table>
-          <thead><tr><th>Staff</th><th>Dates</th><th>Days</th><th>Availability</th><th>Note</th><th></th></tr></thead>
+          <thead><tr><th>Staff</th><th>Type</th><th>Dates</th><th>Days</th><th>Availability</th><th>Note</th><th></th></tr></thead>
           <tbody id="pendingTable"></tbody>
         </table>
         </div>
@@ -130,6 +130,7 @@
         <h2>Add holiday manually</h2>
         <div class="row">
           <div><label>Staff member</label><select id="reqStaff"></select></div>
+          <div><label>Type</label><select id="reqType2"><option value="holiday">Holidays</option><option value="banked">Banked hours</option><option value="unpaid">Unpaid</option></select></div>
           <div><label>First day off</label><input type="date" id="reqStart"></div>
           <div><label>Last day off</label><input type="date" id="reqEnd"></div>
           <div><label>Note</label><input type="text" id="reqNote" style="width:180px"></div>
@@ -142,7 +143,7 @@
         <h2>History</h2>
         <div style="overflow-x:auto">
         <table>
-          <thead><tr><th>Staff</th><th>Dates</th><th>Days</th><th>Status</th><th>Decided by</th><th>Note</th><th></th></tr></thead>
+          <thead><tr><th>Staff</th><th>Type</th><th>Dates</th><th>Days</th><th>Status</th><th>Decided by</th><th>Note</th><th></th></tr></thead>
           <tbody id="historyTable"></tbody>
         </table>
         </div>
@@ -269,6 +270,11 @@ function isWeekend(d){ return d.getDay()===0||d.getDay()===6; }
 function countDays(a,b){ let n=0; eachDay(a,b,d=>{ if(db.settings.weekends==='yes'||!isWeekend(d)) n++; }); return n; }
 function niceDate(s){ return parseD(s).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}); }
 function staffById(id){ return db.staff.find(s=>s.id===id); }
+function typeBadge(t){
+  const m={holiday:['Holidays','#dcfce7','#1a7f3c'],banked:['Banked','#e0e7ff','#3730a3'],unpaid:['Unpaid','#f4f4f5','#52525b']};
+  const x=m[t||'holiday']||m.holiday;
+  return `<span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;background:${x[1]};color:${x[2]}">${x[0]}</span>`;
+}
 function offOn(ds, incPending){
   return db.requests.filter(r=>{
     if(r.status==='declined') return false;
@@ -276,8 +282,12 @@ function offOn(ds, incPending){
     return ds>=r.start && ds<=r.end;
   });
 }
+function usedByType(id,type){
+  return db.requests.filter(r=>r.staffId===id && r.status==='approved' && (r.type||'holiday')===type)
+    .reduce((n,r)=>n+countDays(r.start,r.end),0);
+}
 function usedDays(id){
-  return db.requests.filter(r=>r.staffId===id && r.status==='approved').reduce((n,r)=>n+countDays(r.start,r.end),0);
+  return usedByType(id,'holiday')+usedByType(id,'banked')+usedByType(id,'unpaid');
 }
 function findClashes(staffId, start, end, ignoreId){
   const person=staffById(staffId); const out=[];
@@ -365,7 +375,7 @@ async function adminAdd(){
   if(!staffId||!start||!end||end<start){ out.innerHTML='<div class="clash-box">Pick staff and a valid date range.</div>'; return; }
   const c=findClashes(staffId,start,end,null);
   if(c.length && !confirm(`Clashes on ${c.length} day(s): ${c.slice(0,3).map(x=>niceDate(x.date)).join(', ')}. Add anyway?`)) return;
-  await apiAction({action:'adminRequest', staffId, start, end, note, status:'approved'});
+  await apiAction({action:'adminRequest', staffId, start, end, note, type:document.getElementById('reqType2').value, status:'approved'});
   out.innerHTML='<div class="clash-box ok">Added.</div>';
   document.getElementById('reqNote').value='';
 }
@@ -436,6 +446,7 @@ function renderAll(){
     const c=findClashes(r.staffId,r.start,r.end,r.id);
     return `<tr>
       <td><b>${p.name}</b></td>
+      <td>${typeBadge(r.type)}</td>
       <td>${niceDate(r.start)} to ${niceDate(r.end)}</td>
       <td>${countDays(r.start,r.end)}</td>
       <td>${c.length?`<span class="clash-inline">Clash on ${c.length} day${c.length>1?'s':''}</span>`:'<span style="color:var(--ok);font-weight:600;font-size:12px">Clear</span>'}</td>
@@ -452,7 +463,7 @@ function renderAll(){
   const hist=db.requests.filter(r=>r.status!=='pending').sort((a,b)=>a.start<b.start?1:-1);
   document.getElementById('historyTable').innerHTML=hist.map(r=>{
     const p=staffById(r.staffId)||{name:'(removed)'};
-    return `<tr><td><b>${p.name}</b></td><td>${niceDate(r.start)} to ${niceDate(r.end)}</td>
+    return `<tr><td><b>${p.name}</b></td><td>${typeBadge(r.type)}</td><td>${niceDate(r.start)} to ${niceDate(r.end)}</td>
       <td>${countDays(r.start,r.end)}</td><td><span class="pill ${r.status}">${r.status}</span></td>
       <td class="muted">${r.decidedBy?`${r.decidedBy}${r.decidedAt?', '+niceDate(r.decidedAt.slice(0,10)):''}`:''}</td>
       <td class="muted">${r.note||''}</td>
@@ -461,10 +472,13 @@ function renderAll(){
   document.getElementById('historyEmpty').style.display=hist.length?'none':'block';
 
   document.getElementById('staffTable').innerHTML=db.staff.map(s=>{
-    const used=usedDays(s.id);
+    const usedHol=usedByType(s.id,'holiday');
+    const usedBank=usedByType(s.id,'banked');
+    const usedUnpaid=usedByType(s.id,'unpaid');
+    const used=usedHol+usedBank+usedUnpaid;
     const banked=s.carry||0;
-    const holLeft=Math.max(0, s.allowance-used);
-    const bankLeft=banked-Math.max(0, used-s.allowance);
+    const holLeft=s.allowance-usedHol;
+    const bankLeft=banked-usedBank;
     const rem=holLeft+bankLeft;
     return `<tr><td><b>${s.name}</b></td><td>${s.role}</td>
       <td><span style="display:flex;gap:6px"><input type="email" id="em_${s.id}" value="${s.email||''}" placeholder="none" style="width:180px;padding:6px 8px;font-size:13px">
@@ -475,8 +489,8 @@ function renderAll(){
         <button class="btn-ghost btn-sm" onclick="saveAllowance('${s.id}')">Save</button></span></td>
       <td><span style="display:flex;gap:6px"><input type="number" id="cy_${s.id}" value="${s.carry||0}" min="0" style="width:55px;padding:6px 8px;font-size:13px">
         <button class="btn-ghost btn-sm" onclick="saveCarry('${s.id}')">Save</button></span></td>
-      <td>${used}</td>
-      <td class="bal ${rem<0?'neg':''}"><b>${rem}</b> <span class="muted" style="font-size:12px">(${holLeft} hol${banked?` + ${bankLeft} banked`:''})</span></td>
+      <td>${used}${usedUnpaid?` <span class="muted" style="font-size:12px">(${usedUnpaid} unpaid)</span>`:''}</td>
+      <td class="bal ${holLeft<0||bankLeft<0?'neg':''}"><b>${rem}</b> <span class="muted" style="font-size:12px">(${holLeft} hol${banked||usedBank?` + ${bankLeft} banked`:''})</span></td>
       <td><button class="btn-ghost btn-sm" onclick="delStaff('${s.id}')">Remove</button></td></tr>`;
   }).join('');
   document.getElementById('staffEmpty').style.display=db.staff.length?'none':'block';

@@ -52,6 +52,13 @@
       <label>Your name</label>
       <select id="who"></select>
 
+      <label>Type</label>
+      <select id="reqType">
+        <option value="holiday">Holidays</option>
+        <option value="banked">Banked hours</option>
+        <option value="unpaid">Unpaid</option>
+      </select>
+
       <label>First day off</label>
       <input type="date" id="start">
 
@@ -107,7 +114,7 @@ function renderMine(reqs, me){
   if(!me){ box.innerHTML='<span class="muted">Pick your name above to see them.</span>'; return; }
   const sorted = [...(reqs||[])].sort((a,b)=>a.start<b.start?1:-1);
   box.innerHTML = sorted.length
-    ? sorted.map(r=>`<div class="item"><span>${nice(r.start)} to ${nice(r.end)}</span>
+    ? sorted.map(r=>`<div class="item"><span>${nice(r.start)} to ${nice(r.end)} <span style="font-size:12px;color:var(--muted)">${{holiday:'Holidays',banked:'Banked',unpaid:'Unpaid'}[r.type]||'Holidays'}</span></span>
         <span style="display:flex;gap:8px;align-items:center">
           <span style="text-align:right">
             <span class="pill ${r.status}">${r.status}</span>
@@ -151,7 +158,7 @@ async function send(force){
     const r = await fetch(API + '/request', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({staffId:id, start, end, note, force: !!force})
+      body: JSON.stringify({staffId:id, start, end, note, type:document.getElementById('reqType').value, force: !!force})
     });
     const res = await r.json();
 
