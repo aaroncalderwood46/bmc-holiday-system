@@ -41,6 +41,7 @@
   .pill.pending{background:#fef3c7; color:var(--warn);}
   .pill.approved{background:#dcfce7; color:var(--ok);}
   .pill.declined{background:#fee2e2; color:var(--bad);}
+  .pill.cancelled{background:#e4e4e7; color:#52525b;}
   .clash-inline{font-size:12px; color:var(--bad); font-weight:600;}
   .clash-box{border-left:4px solid var(--bad); background:#fff5f5; padding:10px 14px; border-radius:0 8px 8px 0; margin-top:10px; font-size:13px;}
   .clash-box.ok{border-color:var(--ok); background:#f2fbf5;}
@@ -75,6 +76,17 @@
   .empty{text-align:center; padding:30px; color:var(--muted);}
   .settings-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px;}
   .bal{font-variant-numeric:tabular-nums;}
+  .fw{display:flex; gap:6px; align-items:center;}
+  .fw input{transition:border-color .2s, background .2s;}
+  .fw.stored input{border-color:#1a7f3c; background:#f2fbf5;}
+  .fw.stored::after{content:'✓'; color:#1a7f3c; font-weight:700; font-size:13px;}
+  .fw input:focus{border-color:var(--red); background:#fff;}
+  #staffTable td{padding:12px 10px;}
+  #staffTable tr:hover td{background:#fafafa;}
+  #staffTable .who b{display:block;}
+  #staffTable .who span{font-size:12px; color:var(--muted);}
+  @keyframes savedPulse{0%{box-shadow:0 0 0 0 rgba(26,127,60,.5);}100%{box-shadow:0 0 0 8px rgba(26,127,60,0);}}
+  .fw.justsaved input{animation:savedPulse .6s ease-out;}
   .bal.neg{color:var(--bad); font-weight:700;}
   #login{max-width:380px; margin:80px auto; text-align:center;}
   #login input{width:100%; margin:12px 0;}
@@ -183,7 +195,7 @@
         <h2>Team</h2>
         <div style="overflow-x:auto">
         <table>
-          <thead><tr><th>Name</th><th>Role</th><th>PIN</th><th>Email</th><th>Mobile</th><th>Holidays</th><th>Banked</th><th>Used (approved)</th><th>Remaining</th><th></th></tr></thead>
+          <thead><tr><th>Name</th><th>PIN</th><th>Email</th><th>Mobile</th><th>Holidays</th><th>Banked</th><th>Used</th><th>Remaining</th><th></th></tr></thead>
           <tbody id="staffTable"></tbody>
         </table>
         </div>
@@ -218,6 +230,7 @@
       <div class="card">
         <h2>Data backup</h2>
         <div class="row">
+          <button class="btn-ghost" onclick="exportCsv()">Export year CSV</button>
           <button class="btn-ghost" onclick="exportData()">Export backup (JSON)</button>
           <button class="btn-ghost" onclick="document.getElementById('importFile').click()">Import backup</button>
           <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
@@ -272,6 +285,30 @@ async function tryLogin(){
 }
 function logout(){ localStorage.removeItem('bmc_admin_key'); location.reload(); }
 
+function exportCsv(){
+  const years=[...new Set(db.requests.map(r=>r.start.slice(0,4)))].sort().reverse();
+  if(!years.length){ alert('No requests to export yet.'); return; }
+  let year=prompt('Which year? ('+years.join(', ')+') or type ALL:', years[0]);
+  if(year===null) return;
+  year=year.trim().toUpperCase();
+  const rows=db.requests
+    .filter(r=>year==='ALL'||r.start.slice(0,4)===year)
+    .sort((a,b)=>a.start<b.start?-1:1)
+    .map(r=>{
+      const p=staffById(r.staffId)||{name:'(removed)',role:''};
+      return [p.name,p.role,{holiday:'Holidays',banked:'Banked',unpaid:'Unpaid'}[r.type||'holiday'],
+        r.start,r.end,r.half||'',countDays(r.start,r.end,r.half),r.status,
+        r.decidedBy||'',r.decidedAt?r.decidedAt.slice(0,10):'',(r.note||'').replace(/"/g,"'")];
+    });
+  if(!rows.length){ alert('No requests for '+year+'.'); return; }
+  const head=['Name','Role','Type','First day','Last day','Half','Days','Status','Decided by','Decided on','Note'];
+  const csv=[head,...rows].map(r=>r.map(c=>`"${c}"`).join(',')).join('\r\n');
+  const blob=new Blob(['\ufeff'+csv],{type:'text/csv'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='bmc-holidays-'+(year==='ALL'?'all':year)+'.csv';
+  a.click();
+}
 function exportData(){
   const blob=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});
   const a=document.createElement('a');
@@ -358,11 +395,15 @@ async function addStaff(){
   document.getElementById('staffEmail').value='';
   document.getElementById('staffMobile').value='';
 }
+function pulse(prefix,id){
+  const el=document.getElementById('fw_'+prefix+'_'+id);
+  if(el){ el.classList.add('justsaved'); setTimeout(()=>el.classList.remove('justsaved'),700); }
+}
 async function savePin(id){
   const v=document.getElementById('pn_'+id).value.trim();
   if(v && !/^\d{4,6}$/.test(v)){ alert('PIN must be 4 to 6 digits.'); return; }
   await apiAction({action:'setPin', id, pin:v});
-  alert(v?'PIN saved. Tell them it once, their phone remembers it.':'PIN removed.');
+  pulse('pn',id);
 }
 async function saveEmail(id){
   const v=document.getElementById('em_'+id).value.trim();
@@ -370,7 +411,7 @@ async function saveEmail(id){
     alert('That does not look like a valid email.'); return;
   }
   await apiAction({action:'setEmail', id, email:v});
-  alert('Email saved.');
+  pulse('em',id);
 }
 async function saveMobile(id){
   const v=document.getElementById('mb_'+id).value.trim();
@@ -378,7 +419,7 @@ async function saveMobile(id){
     alert('That does not look like a UK mobile. Use the 07 format.'); return;
   }
   await apiAction({action:'setMobile', id, mobile:v});
-  alert('Mobile saved.');
+  pulse('mb',id);
 }
 async function delStaff(id){ if(confirm('Remove this staff member and all their requests?')) await apiAction({action:'deleteStaff', id}); }
 async function addBlockout(){
@@ -392,11 +433,11 @@ async function addBlockout(){
 async function delBlockout(id){ if(confirm('Remove this block-out period?')) await apiAction({action:'deleteBlockout', id}); }
 async function saveAllowance(id){
   await apiAction({action:'setAllowance', id, allowance:document.getElementById('al_'+id).value});
-  alert('Allowance saved.');
+  pulse('al',id);
 }
 async function saveCarry(id){
   await apiAction({action:'setCarry', id, carry:document.getElementById('cy_'+id).value});
-  alert('Banked days saved.');
+  pulse('cy',id);
 }
 async function saveSettings(){
   await apiAction({action:'settings',
@@ -521,16 +562,16 @@ function renderAll(){
     const holLeft=s.allowance-usedHol;
     const bankLeft=banked-usedBank;
     const rem=holLeft+bankLeft;
-    return `<tr><td><b>${s.name}</b></td><td>${s.role}</td>
-      <td><span style="display:flex;gap:6px"><input type="text" inputmode="numeric" id="pn_${s.id}" value="${s.pin||''}" placeholder="none" maxlength="6" style="width:60px;padding:6px 8px;font-size:13px">
+    return `<tr><td class="who"><b>${s.name}</b><span>${s.role}</span></td>
+      <td><span class="fw ${s.pin?'stored':''}" id="fw_pn_${s.id}"><input type="text" inputmode="numeric" id="pn_${s.id}" value="${s.pin||''}" placeholder="none" maxlength="6" style="width:60px;padding:6px 8px;font-size:13px">
         <button class="btn-ghost btn-sm" onclick="savePin('${s.id}')">Save</button></span></td>
-      <td><span style="display:flex;gap:6px"><input type="email" id="em_${s.id}" value="${s.email||''}" placeholder="none" style="width:180px;padding:6px 8px;font-size:13px">
+      <td><span class="fw ${s.email?'stored':''}" id="fw_em_${s.id}"><input type="email" id="em_${s.id}" value="${s.email||''}" placeholder="none" style="width:180px;padding:6px 8px;font-size:13px">
         <button class="btn-ghost btn-sm" onclick="saveEmail('${s.id}')">Save</button></span></td>
-      <td><span style="display:flex;gap:6px"><input type="tel" id="mb_${s.id}" value="${s.mobile||''}" placeholder="none" style="width:130px;padding:6px 8px;font-size:13px">
+      <td><span class="fw ${s.mobile?'stored':''}" id="fw_mb_${s.id}"><input type="tel" id="mb_${s.id}" value="${s.mobile||''}" placeholder="none" style="width:130px;padding:6px 8px;font-size:13px">
         <button class="btn-ghost btn-sm" onclick="saveMobile('${s.id}')">Save</button></span></td>
-      <td><span style="display:flex;gap:6px"><input type="number" id="al_${s.id}" value="${s.allowance}" min="0" style="width:60px;padding:6px 8px;font-size:13px">
+      <td><span class="fw stored" id="fw_al_${s.id}"><input type="number" id="al_${s.id}" value="${s.allowance}" min="0" style="width:60px;padding:6px 8px;font-size:13px">
         <button class="btn-ghost btn-sm" onclick="saveAllowance('${s.id}')">Save</button></span></td>
-      <td><span style="display:flex;gap:6px"><input type="number" id="cy_${s.id}" value="${s.carry||0}" min="0" style="width:55px;padding:6px 8px;font-size:13px">
+      <td><span class="fw ${s.carry?'stored':''}" id="fw_cy_${s.id}"><input type="number" id="cy_${s.id}" value="${s.carry||0}" min="0" style="width:55px;padding:6px 8px;font-size:13px">
         <button class="btn-ghost btn-sm" onclick="saveCarry('${s.id}')">Save</button></span></td>
       <td>${used}${usedUnpaid?` <span class="muted" style="font-size:12px">(${usedUnpaid} unpaid)</span>`:''}</td>
       <td class="bal ${holLeft<0||bankLeft<0?'neg':''}"><b>${rem}</b> <span class="muted" style="font-size:12px">(${holLeft} hol${banked||usedBank?` + ${bankLeft} banked`:''})</span></td>
