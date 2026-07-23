@@ -142,7 +142,7 @@
         <h2>Add holiday manually</h2>
         <div class="row">
           <div><label>Staff member</label><select id="reqStaff"></select></div>
-          <div><label>Type</label><select id="reqType2"><option value="holiday">Holidays</option><option value="banked">Banked hours</option><option value="unpaid">Unpaid</option></select></div>
+          <div><label>Type</label><select id="reqType2"><option value="holiday">Holidays</option><option value="unpaid">Unpaid</option></select></div>
           <div><label>Day</label><select id="reqHalf2"><option value="">Full day(s)</option><option value="AM">Morning only</option><option value="PM">Afternoon only</option></select></div>
           <div><label>First day off</label><input type="date" id="reqStart"></div>
           <div><label>Last day off</label><input type="date" id="reqEnd"></div>
@@ -195,7 +195,7 @@
         <h2>Team</h2>
         <div style="overflow-x:auto">
         <table>
-          <thead><tr><th>Name</th><th>PIN</th><th>Email</th><th>Mobile</th><th>Holidays</th><th>Banked</th><th>Used</th><th>Remaining</th><th></th></tr></thead>
+          <thead><tr><th>Name</th><th>PIN</th><th>Email</th><th>Mobile</th><th>Holidays</th><th>Used</th><th>Remaining</th><th></th></tr></thead>
           <tbody id="staffTable"></tbody>
         </table>
         </div>
@@ -357,7 +357,7 @@ function usedByType(id,type){
     .reduce((n,r)=>n+countDays(r.start,r.end,r.half),0);
 }
 function usedDays(id){
-  return usedByType(id,'holiday')+usedByType(id,'banked')+usedByType(id,'unpaid');
+  return usedByType(id,'holiday')+usedByType(id,'unpaid');
 }
 function findClashes(staffId, start, end, ignoreId){
   const person=staffById(staffId); const out=[];
@@ -434,10 +434,6 @@ async function delBlockout(id){ if(confirm('Remove this block-out period?')) awa
 async function saveAllowance(id){
   await apiAction({action:'setAllowance', id, allowance:document.getElementById('al_'+id).value});
   pulse('al',id);
-}
-async function saveCarry(id){
-  await apiAction({action:'setCarry', id, carry:document.getElementById('cy_'+id).value});
-  pulse('cy',id);
 }
 async function saveSettings(){
   await apiAction({action:'settings',
@@ -555,13 +551,9 @@ function renderAll(){
 
   document.getElementById('staffTable').innerHTML=db.staff.map(s=>{
     const usedHol=usedByType(s.id,'holiday');
-    const usedBank=usedByType(s.id,'banked');
     const usedUnpaid=usedByType(s.id,'unpaid');
-    const used=usedHol+usedBank+usedUnpaid;
-    const banked=s.carry||0;
-    const holLeft=s.allowance-usedHol;
-    const bankLeft=banked-usedBank;
-    const rem=holLeft+bankLeft;
+    const used=usedHol+usedUnpaid;
+    const rem=s.allowance-usedHol;
     return `<tr><td class="who"><b>${s.name}</b><span>${s.role}</span></td>
       <td><span class="fw ${s.pin?'stored':''}" id="fw_pn_${s.id}"><input type="text" inputmode="numeric" id="pn_${s.id}" value="${s.pin||''}" placeholder="none" maxlength="6" style="width:60px;padding:6px 8px;font-size:13px">
         <button class="btn-ghost btn-sm" onclick="savePin('${s.id}')">Save</button></span></td>
@@ -571,10 +563,8 @@ function renderAll(){
         <button class="btn-ghost btn-sm" onclick="saveMobile('${s.id}')">Save</button></span></td>
       <td><span class="fw stored" id="fw_al_${s.id}"><input type="number" id="al_${s.id}" value="${s.allowance}" min="0" style="width:60px;padding:6px 8px;font-size:13px">
         <button class="btn-ghost btn-sm" onclick="saveAllowance('${s.id}')">Save</button></span></td>
-      <td><span class="fw ${s.carry?'stored':''}" id="fw_cy_${s.id}"><input type="number" id="cy_${s.id}" value="${s.carry||0}" min="0" style="width:55px;padding:6px 8px;font-size:13px">
-        <button class="btn-ghost btn-sm" onclick="saveCarry('${s.id}')">Save</button></span></td>
       <td>${used}${usedUnpaid?` <span class="muted" style="font-size:12px">(${usedUnpaid} unpaid)</span>`:''}</td>
-      <td class="bal ${holLeft<0||bankLeft<0?'neg':''}"><b>${rem}</b> <span class="muted" style="font-size:12px">(${holLeft} hol${banked||usedBank?` + ${bankLeft} banked`:''})</span></td>
+      <td class="bal ${rem<0?'neg':''}"><b>${rem}</b></td>
       <td><button class="btn-ghost btn-sm" onclick="delStaff('${s.id}')">Remove</button></td></tr>`;
   }).join('');
   document.getElementById('staffEmpty').style.display=db.staff.length?'none':'block';
