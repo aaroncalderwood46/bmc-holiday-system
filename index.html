@@ -22,14 +22,15 @@
   .blind .route{font-family:'Barlow Condensed'; font-weight:700; font-size:30px; letter-spacing:.06em; color:#fff; text-transform:uppercase; line-height:1;}
   .blind .route small{display:block; font-size:13px; font-weight:600; letter-spacing:.28em; color:var(--red-bright); margin-top:6px;}
 
-  /* fleet strip */
-  .fleet{height:230px; background:url('fleet.jpg') center 65% / cover no-repeat; position:relative;}
-  .fleet::after{content:''; position:absolute; inset:0; background:linear-gradient(180deg, rgba(16,16,18,.35), rgba(245,244,242,0) 55%, var(--paper));}
+  /* coach livery strip */
+  .fleet{height:200px; background:url('coach.jpg') center 40% / cover no-repeat; position:relative;}
+  .fleet::after{content:''; position:absolute; inset:0; background:linear-gradient(180deg, rgba(16,16,18,.15), rgba(245,244,242,0) 55%, var(--paper));}
+  @media(min-width:641px){ .fleet{height:280px;} }
 
   main{max-width:1060px; margin:-64px auto 0; padding:0 24px 70px; position:relative;}
   h1{font-family:'Barlow Condensed'; font-weight:700; font-size:clamp(34px,5vw,52px); text-transform:uppercase; letter-spacing:.02em; line-height:.95;}
   h1 em{font-style:normal; color:var(--red);}
-  .lede{margin:12px 0 38px; font-size:17px; color:var(--muted); max-width:52ch;}
+  .lede{margin:4px 0 26px; font-size:16px; color:var(--muted); max-width:52ch;}
 
   .board-label{font-family:'Barlow Condensed'; font-weight:600; font-size:15px; letter-spacing:.24em; text-transform:uppercase; color:var(--muted); margin:34px 0 12px; display:flex; align-items:center; gap:12px;}
   .board-label::after{content:''; flex:1; height:1px; background:var(--line);}
@@ -56,7 +57,14 @@
   footer{border-top:1px solid var(--line); margin-top:26px; padding-top:18px; font-size:13px; color:var(--muted); display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;}
 
   @media (prefers-reduced-motion: reduce){ .card, .card .go{transition:none;} .card:hover{transform:none;} }
-  @media(max-width:640px){ .fleet{height:160px;} main{margin-top:-40px;} }
+  @media(max-width:640px){
+    main{margin-top:-36px; padding:0 16px 50px;}
+    .card{padding:20px 16px; min-height:88px;}
+    .card h3{font-size:18px;}
+    .chip{min-width:52px; height:52px; font-size:22px;}
+    .blind img{height:44px;}
+    .blind .route{font-size:24px;}
+  }
 </style>
 </head>
 <body>
@@ -71,8 +79,7 @@
 <div class="fleet" role="img" aria-label="The Belfast Mini Coach fleet lined up at the depot"></div>
 
 <main>
-  <h1>The <em>BMC</em> tool depot</h1>
-  <p class="lede">Everything the team uses day to day, in one place. Drivers only need the first card. Office tools ask you to sign in.</p>
+  <p class="lede">Drivers, tap the first card. Office tools are underneath.</p>
 
   <div class="board-label">Drivers</div>
   <div class="grid">
@@ -94,24 +101,6 @@
       <span>
         <h3>Holiday admin</h3>
         <p>Approve requests, calendar, allowances, block-out dates.</p>
-        <span class="tag staff">Staff only</span>
-      </span>
-      <span class="go">&rarr;</span>
-    </a>
-    <a class="card dark" href="#">
-      <span class="chip">E</span>
-      <span>
-        <h3>Event page generator</h3>
-        <p>Build event pages with pickups, times and pricing.</p>
-        <span class="tag staff">Staff only</span>
-      </span>
-      <span class="go">&rarr;</span>
-    </a>
-    <a class="card dark" href="#">
-      <span class="chip">R</span>
-      <span>
-        <h3>Review request sender</h3>
-        <p>Send post-trip review requests to customers.</p>
         <span class="tag staff">Staff only</span>
       </span>
       <span class="go">&rarr;</span>
