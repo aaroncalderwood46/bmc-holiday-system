@@ -335,7 +335,7 @@ function importData(e){
 }
 
 // ---------- helpers ----------
-function fmt(d){ return d.toISOString().slice(0,10); }
+function fmt(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function parseD(s){ const [y,m,dd]=s.split('-').map(Number); return new Date(y,m-1,dd); }
 function eachDay(a,b,cb){ let d=parseD(a), end=parseD(b); while(d<=end){ cb(new Date(d)); d.setDate(d.getDate()+1);} }
 function isWeekend(d){ return d.getDay()===0||d.getDay()===6; }
@@ -385,7 +385,9 @@ async function setStatus(id,status){
   const who=prompt('Your name (recorded against this decision):', localStorage.getItem('bmc_approver')||'');
   if(who===null) return;
   if(who.trim()) localStorage.setItem('bmc_approver', who.trim());
-  await apiAction({action:'setStatus', id, status, decidedBy: who.trim()});
+  const txtBox=document.getElementById('txt_'+id);
+  const notify = txtBox ? txtBox.checked : true;
+  await apiAction({action:'setStatus', id, status, decidedBy: who.trim(), notify});
 }
 async function delRequest(id){ if(confirm('Delete this request?')) await apiAction({action:'deleteRequest', id}); }
 async function addStaff(){
@@ -535,6 +537,7 @@ function renderAll(){
       <td style="white-space:nowrap">
         <button class="btn-red btn-sm" onclick="setStatus('${r.id}','approved')">Approve</button>
         <button class="btn-ghost btn-sm" onclick="setStatus('${r.id}','declined')">Decline</button>
+        <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--muted);margin-left:6px;white-space:nowrap"><input type="checkbox" id="txt_${r.id}" ${p.mobile?'checked':'disabled'} style="width:auto;margin:0">text</label>
       </td></tr>`;
   }).join('');
   document.getElementById('pendingEmpty').style.display=pending.length?'none':'block';
