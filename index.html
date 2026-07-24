@@ -39,7 +39,8 @@
   .card{background:#fff; border:1px solid var(--line); border-radius:12px; padding:22px 20px; display:flex; gap:16px; align-items:center; text-decoration:none; color:var(--ink); transition:border-color .15s, transform .15s, box-shadow .15s; position:relative;}
   .card:hover{border-color:var(--red); transform:translateY(-2px); box-shadow:0 10px 24px rgba(16,16,18,.08);}
   .card:focus-visible{outline:3px solid var(--red); outline-offset:2px;}
-  .chip{font-family:'Barlow Condensed'; font-weight:700; font-size:22px; color:#fff; background:var(--red); min-width:52px; height:52px; border-radius:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0;}
+  .chip{color:#fff; background:var(--red); min-width:52px; height:52px; border-radius:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0;}
+  .chip svg{width:28px; height:28px;}
   .card.dark .chip{background:var(--black);}
   .card h3{font-size:21px; font-weight:600; margin-bottom:4px;}
   .card p{font-size:16px; color:var(--muted); line-height:1.5; padding-right:20px;}
@@ -82,7 +83,7 @@
     <div>
       <div class="board-label">Drivers</div>
       <a class="card" href="/driver">
-        <span class="chip">H</span>
+        <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="4.9" y1="4.9" x2="6.3" y2="6.3"/><line x1="17.7" y1="17.7" x2="19.1" y2="19.1"/><line x1="4.9" y1="19.1" x2="6.3" y2="17.7"/><line x1="17.7" y1="6.3" x2="19.1" y2="4.9"/></svg></span>
         <span>
           <h3>Holiday requests</h3>
           <p>Book time off, check what's approved, cancel if plans change.</p>
@@ -94,7 +95,7 @@
     <div>
       <div class="board-label">Office staff only</div>
       <a class="card dark" href="/admin">
-        <span class="chip">H</span>
+        <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2.5" x2="8" y2="6"/><line x1="16" y1="2.5" x2="16" y2="6"/><polyline points="9,14 11,16 15.5,12"/></svg></span>
         <span>
           <h3>Holiday admin</h3>
           <p>Approve requests, calendar, allowances, block-out dates.</p>
