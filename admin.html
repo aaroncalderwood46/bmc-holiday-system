@@ -46,6 +46,11 @@
   .pill.declined{background:#fee2e2; color:var(--bad);}
   .pill.cancelled{background:#e4e4e7; color:#52525b;}
   .clash-inline{font-size:12px; color:var(--bad); font-weight:600;}
+  .notify-toggle{display:inline-flex; align-items:center; margin-left:8px; cursor:pointer; color:#c4c4c8; vertical-align:middle;}
+  .notify-toggle input{position:absolute; opacity:0; width:0; height:0;}
+  .notify-toggle:has(input:checked){color:var(--red);}
+  .notify-toggle.off{cursor:not-allowed; opacity:.4;}
+  .notify-toggle:has(input:checked)::after{content:'✓'; font-size:11px; font-weight:700; margin-left:1px;}
   .clash-box{border-left:4px solid var(--bad); background:#fff5f5; padding:10px 14px; border-radius:0 8px 8px 0; margin-top:10px; font-size:13px;}
   .clash-box.ok{border-color:var(--ok); background:#f2fbf5;}
   .cal-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;}
@@ -254,7 +259,9 @@ const API = 'https://bmc-holiday-requests.aaronc761.workers.dev';
 
 let db = null;
 let calDate = new Date();
-let KEY = localStorage.getItem('bmc_admin_key') || '';
+let KEY = sessionStorage.getItem('bmc_admin_key') || '';
+// clear any permanently-saved key left over from before this update
+if(localStorage.getItem('bmc_admin_key')) localStorage.removeItem('bmc_admin_key');
 
 // ---------- api ----------
 async function apiGet(){
@@ -278,7 +285,7 @@ async function tryLogin(){
   KEY = document.getElementById('keyInput').value;
   try{
     await apiGet();
-    localStorage.setItem('bmc_admin_key', KEY);
+    sessionStorage.setItem('bmc_admin_key', KEY);
     document.getElementById('login').style.display='none';
     document.getElementById('app').style.display='block';
     renderAll();
@@ -286,7 +293,16 @@ async function tryLogin(){
     document.getElementById('loginErr').textContent = 'Wrong key or connection problem.';
   }
 }
-function logout(){ localStorage.removeItem('bmc_admin_key'); location.reload(); }
+function logout(){ sessionStorage.removeItem('bmc_admin_key'); location.reload(); }
+
+// auto-lock back to the login screen after 15 minutes of no activity
+let idleTimer;
+function resetIdle(){
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(()=>{ if(KEY){ sessionStorage.removeItem('bmc_admin_key'); location.reload(); } }, 15*60*1000);
+}
+['click','keydown','touchstart'].forEach(ev=>document.addEventListener(ev, resetIdle, {passive:true}));
+resetIdle();
 
 function exportCsv(){
   const years=[...new Set(db.requests.map(r=>r.start.slice(0,4)))].sort().reverse();
@@ -537,7 +553,10 @@ function renderAll(){
       <td style="white-space:nowrap">
         <button class="btn-red btn-sm" onclick="setStatus('${r.id}','approved')">Approve</button>
         <button class="btn-ghost btn-sm" onclick="setStatus('${r.id}','declined')">Decline</button>
-        <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--muted);margin-left:6px;white-space:nowrap"><input type="checkbox" id="txt_${r.id}" ${p.mobile?'checked':'disabled'} style="width:auto;margin:0">text</label>
+        <label class="notify-toggle ${p.mobile?'':'off'}" title="${p.mobile?'Notify driver by text when you approve or decline':'No mobile saved for this driver'}">
+          <input type="checkbox" id="txt_${r.id}" ${p.mobile?'checked':'disabled'}>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18"/></svg>
+        </label>
       </td></tr>`;
   }).join('');
   document.getElementById('pendingEmpty').style.display=pending.length?'none':'block';
