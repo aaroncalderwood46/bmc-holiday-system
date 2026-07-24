@@ -96,7 +96,7 @@
 const API = 'https://bmc-holiday-requests.aaronc761.workers.dev';
 
 function parseD(s){ const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); }
-function fmt(d){ return d.toISOString().slice(0,10); }
+function fmt(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function nice(s){ return parseD(s).toLocaleDateString('en-GB',{day:'numeric',month:'short'}); }
 function decidedStamp(iso){
   const d=new Date(iso);
@@ -167,7 +167,11 @@ function renderMine(reqs, me){
     : '<span class="muted">No requests yet.</span>';
 }
 
-function cancellable(start){ return parseD(start).getTime() >= Date.now() + 48*3600*1000; }
+function cancellable(start){
+  const [y,m,d]=start.split('-').map(Number);
+  const startUTC=Date.UTC(y,m-1,d);
+  return (startUTC - Date.now())/3600000 >= 48;
+}
 async function cancelReq(id, status){
   const q = status==='approved'
     ? 'Cancel this APPROVED holiday? The office will be told and the days go back into your entitlement.'
