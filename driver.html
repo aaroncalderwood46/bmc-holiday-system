@@ -8,6 +8,14 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#101012">
+<script>
+  window.__bipEvent = null;
+  window.addEventListener('beforeinstallprompt', function(e){
+    e.preventDefault();
+    window.__bipEvent = e;
+    window.dispatchEvent(new Event('bip-ready'));
+  });
+</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="BMC Holidays">
 <title>BMC | Request Holidays</title>
@@ -66,6 +74,11 @@
     <div id="installAndroid" style="display:none">
       <p>Install this as an app so it's one tap from your home screen next time.</p>
       <button id="installBtn">Add to home screen</button>
+    </div>
+    <div id="installManual" style="display:none">
+      <p>Add this to your home screen so it opens like an app:</p>
+      <p class="ios-step">1. Tap the <b>&#8942;</b> menu (top right of Chrome)</p>
+      <p class="ios-step">2. Tap <b>Add to Home screen</b>, then <b>Install</b></p>
     </div>
     <div id="installIos" style="display:none">
       <p>Add this to your home screen so it opens like an app:</p>
@@ -281,20 +294,29 @@ function maybeShowInstall(){
   if(localStorage.getItem('bmc_install_dismissed')) return;
   const ua=navigator.userAgent||'';
   const isIos=/iphone|ipad|ipod/i.test(ua);
+  const isMobile=isIos||/android|mobile/i.test(ua);
   const card=document.getElementById('installCard');
-  if(isIos && /safari/i.test(ua) && !/crios|fxios/i.test(ua)){
+  if(isIos){
     document.getElementById('installIos').style.display='block';
     card.style.display='block';
+    return;
   }
-  // Android path is triggered by the beforeinstallprompt event below
+  if(isMobile){
+    setTimeout(()=>{
+      if(deferredPrompt || isStandalone() || localStorage.getItem('bmc_install_dismissed')) return;
+      document.getElementById('installManual').style.display='block';
+      card.style.display='block';
+    }, 1500);
+  }
 }
-window.addEventListener('beforeinstallprompt', e=>{
-  e.preventDefault();
-  deferredPrompt=e;
+function showAndroidCard(){
   if(isStandalone() || localStorage.getItem('bmc_install_dismissed')) return;
+  document.getElementById('installManual').style.display='none';
   document.getElementById('installAndroid').style.display='block';
   document.getElementById('installCard').style.display='block';
-});
+}
+if(window.__bipEvent){ deferredPrompt=window.__bipEvent; showAndroidCard(); }
+window.addEventListener('bip-ready', ()=>{ deferredPrompt=window.__bipEvent; showAndroidCard(); });
 document.getElementById('installBtn').addEventListener('click', async ()=>{
   if(!deferredPrompt) return;
   deferredPrompt.prompt();
