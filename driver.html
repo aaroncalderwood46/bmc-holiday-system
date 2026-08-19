@@ -267,6 +267,7 @@ async function send(force){
 }
 
 // ---- add to home screen ----
+if('serviceWorker' in navigator){ navigator.serviceWorker.register('/sw.js').catch(()=>{}); }
 let deferredPrompt=null;
 function dismissInstall(){
   document.getElementById('installCard').style.display='none';
