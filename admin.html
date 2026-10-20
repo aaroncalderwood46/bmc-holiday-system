@@ -106,6 +106,13 @@
   .ios-step{font-size:14px; color:var(--text); margin-top:6px;}
   .ios-step b{color:var(--red);}
   #installClose{float:right; background:none; border:none; font-size:20px; color:#bbb; cursor:pointer; padding:0;}
+  .year-tabs{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;}
+  .year-tab{padding:10px 18px; border:2px solid var(--border); background:#fff; border-radius:10px; font-size:16px; font-weight:700; color:var(--muted); cursor:pointer; text-align:left;}
+  .year-tab small{display:block; font-size:11px; font-weight:600; margin-top:2px;}
+  .year-tab.active{background:var(--red); border-color:var(--red); color:#fff;}
+  .year-banner{padding:10px 14px; border-radius:8px; font-size:14px; margin-bottom:14px; background:#f2fbf5; border-left:4px solid var(--ok); color:var(--text);}
+  .year-banner.future{background:#fff7e6; border-left-color:var(--warn);}
+  .year-banner.past{background:#f4f4f5; border-left-color:#71717a;}
   .fw{display:flex; gap:6px; align-items:center;}
   .fw input{transition:border-color .2s, background .2s;}
   .fw.stored input{border-color:#1a7f3c; background:#f2fbf5;}
@@ -212,13 +219,18 @@
 
       <div class="card">
         <h2>History</h2>
+        <div class="row" style="margin-bottom:12px">
+          <div><label>Staff member</label><select id="histStaff" onchange="renderAll()"><option value="">All staff</option></select></div>
+          <div><label>Leave year</label><select id="histYear" onchange="renderAll()"><option value="">All years</option></select></div>
+        </div>
+        <div id="histSummary"></div>
         <div style="overflow-x:auto">
         <table>
           <thead><tr><th>Staff</th><th>Type</th><th>Dates</th><th>Days</th><th>Status</th><th>Decided by</th><th>Note</th><th></th></tr></thead>
           <tbody id="historyTable"></tbody>
         </table>
         </div>
-        <div class="empty" id="historyEmpty" style="display:none">No decided requests yet</div>
+        <div class="empty" id="historyEmpty" style="display:none">No holidays match this filter</div>
       </div>
     </div>
 
@@ -250,15 +262,9 @@
         </div>
       </div>
       <div class="card">
-        <h2 style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">Team
-          <span style="display:flex;align-items:center;gap:6px;font-size:14px;font-weight:400">
-            <button class="btn-ghost btn-sm" onclick="shiftYear(-1)">&larr;</button>
-            <span style="font-weight:700" id="yearLabel"></span>
-            <button class="btn-ghost btn-sm" onclick="shiftYear(1)">&rarr;</button>
-            <span class="muted" id="yearRange"></span>
-          </span>
-        </h2>
-        <p class="muted" style="margin:-6px 0 12px">Used and Remaining are for the leave year shown. Holidays booked in a later year come off that year, not this one.</p>
+        <h2>Team</h2>
+        <div class="year-tabs" id="yearTabs"></div>
+        <div class="year-banner" id="yearBanner"></div>
         <div style="overflow-x:auto">
         <table>
           <thead><tr><th>Name</th><th>PIN</th><th>Email</th><th>Mobile</th><th id="allowHead">Holidays</th><th>Used</th><th>Remaining</th><th></th></tr></thead>
@@ -514,7 +520,7 @@ function pulse(prefix,id){
   const el=document.getElementById('fw_'+prefix+'_'+id);
   if(el){ el.classList.add('justsaved'); setTimeout(()=>el.classList.remove('justsaved'),700); }
 }
-function shiftYear(n){ viewYear=(viewYear===null?currentLeaveYear():viewYear)+n; renderAll(); }
+function pickYear(y){ viewYear=y; renderAll(); }
 
 async function savePin(id){
   const v=document.getElementById('pn_'+id).value.trim();
@@ -671,7 +677,37 @@ function renderAll(){
   const badge=document.getElementById('tabBadge');
   badge.style.display=pending.length?'inline':'none'; badge.textContent=pending.length;
 
-  const hist=db.requests.filter(r=>r.status!=='pending').sort((a,b)=>a.start<b.start?1:-1);
+  // history filters: keep the current choice when the dropdowns are rebuilt
+  const hs=document.getElementById('histStaff'), hy=document.getElementById('histYear');
+  const selStaff=hs.value, selYear=hy.value;
+  hs.innerHTML='<option value="">All staff</option>'+[...db.staff].sort((a,b)=>a.name.localeCompare(b.name))
+    .map(st=>`<option value="${st.id}">${st.name}</option>`).join('');
+  hs.value=db.staff.some(st=>st.id===selStaff)?selStaff:'';
+  const yrs=[...new Set(db.requests.map(r=>leaveYearOf(r.start)))].sort((a,b)=>b-a);
+  hy.innerHTML='<option value="">All years</option>'+yrs.map(y=>`<option value="${y}">${leaveYearLabel(y)}</option>`).join('');
+  hy.value=yrs.includes(Number(selYear))?selYear:'';
+
+  // summary card for one person
+  const sumBox=document.getElementById('histSummary');
+  if(hs.value){
+    const st=staffById(hs.value), cur=currentLeaveYear();
+    sumBox.innerHTML=`<div class="year-banner" style="display:flex;gap:24px;flex-wrap:wrap">`+[cur,cur+1].map(y=>{
+      const used=usedByType(st.id,'holiday',y), allow=allowanceFor(st,y), unpaid=usedByType(st.id,'unpaid',y);
+      return `<div><b>${leaveYearLabel(y)}</b> ${y===cur?'(this year)':'(next year)'}<br>
+        ${used} of ${allow} holidays used, <b style="color:${allow-used<0?'var(--bad)':'var(--ok)'}">${allow-used} left</b>${unpaid?`, ${unpaid} unpaid`:''}</div>`;
+    }).join('')+`</div>`;
+  } else sumBox.innerHTML='';
+
+  const hist=db.requests.filter(r=>r.status!=='pending'
+      && (!hs.value || r.staffId===hs.value)
+      && (!hy.value || leaveYearOf(r.start)===Number(hy.value)))
+    .sort((a,b)=>{
+      // upcoming first (soonest at the top), then past ones (most recent first)
+      const t=fmt(new Date()), aUp=a.end>=t, bUp=b.end>=t;
+      if(aUp!==bUp) return aUp?-1:1;
+      if(aUp) return a.start<b.start?-1:1;
+      return a.start<b.start?1:-1;
+    });
   document.getElementById('historyTable').innerHTML=hist.map(r=>{
     const p=staffById(r.staffId)||{name:'(removed)'};
     return `<tr><td><b>${p.name}</b></td><td>${typeBadge(r.type)}<span style="display:block;font-size:11px;color:var(--muted);margin-top:2px">${leaveYearLabel(leaveYearOf(r.start))}</span></td><td>${dateSpan(r)}</td>
@@ -683,12 +719,19 @@ function renderAll(){
   document.getElementById('historyEmpty').style.display=hist.length?'none':'block';
 
   if(viewYear===null) viewYear=currentLeaveYear();
-  document.getElementById('yearLabel').textContent='Leave year '+leaveYearLabel(viewYear);
   document.getElementById('allowHead').textContent='Holidays '+leaveYearLabel(viewYear);
   {
+    const cur=currentLeaveYear();
+    const tag=y=>y===cur?'This year':(y===cur+1?'Next year':'Last year');
+    document.getElementById('yearTabs').innerHTML=[cur-1,cur,cur+1].map(y=>
+      `<button class="year-tab ${y===viewYear?'active':''}" onclick="pickYear(${y})">${leaveYearLabel(y)}<small>${tag(y)}</small></button>`).join('');
     const r=leaveYearRange(viewYear);
-    document.getElementById('yearRange').textContent=niceDate(r.start)+' to '+niceDate(r.end)
-      + (viewYear===currentLeaveYear()?' (current)':'');
+    const b=document.getElementById('yearBanner');
+    b.className='year-banner'+(viewYear>cur?' future':(viewYear<cur?' past':''));
+    b.innerHTML=`Showing <b>${leaveYearLabel(viewYear)}</b> (${niceDate(r.start)} to ${niceDate(r.end)}). `
+      + (viewYear===cur?'Holidays, Used and Remaining are for this year.'
+        :viewYear>cur?'You are viewing <b>next year</b>. Allowances you save here are for '+leaveYearLabel(viewYear)+' only.'
+        :'You are viewing <b>last year</b>.');
   }
   document.getElementById('staffTable').innerHTML=db.staff.map(s=>{
     const yr=viewYear;
