@@ -250,10 +250,18 @@
         </div>
       </div>
       <div class="card">
-        <h2>Team</h2>
+        <h2 style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">Team
+          <span style="display:flex;align-items:center;gap:6px;font-size:14px;font-weight:400">
+            <button class="btn-ghost btn-sm" onclick="shiftYear(-1)">&larr;</button>
+            <span style="font-weight:700" id="yearLabel"></span>
+            <button class="btn-ghost btn-sm" onclick="shiftYear(1)">&rarr;</button>
+            <span class="muted" id="yearRange"></span>
+          </span>
+        </h2>
+        <p class="muted" style="margin:-6px 0 12px">Used and Remaining are for the leave year shown. Holidays booked in a later year come off that year, not this one.</p>
         <div style="overflow-x:auto">
         <table>
-          <thead><tr><th>Name</th><th>PIN</th><th>Email</th><th>Mobile</th><th>Holidays</th><th>Used</th><th>Remaining</th><th></th></tr></thead>
+          <thead><tr><th>Name</th><th>PIN</th><th>Email</th><th>Mobile</th><th id="allowHead">Holidays</th><th>Used</th><th>Remaining</th><th></th></tr></thead>
           <tbody id="staffTable"></tbody>
         </table>
         </div>
@@ -269,6 +277,14 @@
           <div><label>Max staff off on the same day (all roles)</label><input type="number" id="setMaxAll" min="1" value="2" style="width:100px"></div>
           <div><label>Max drivers off on the same day</label><input type="number" id="setMaxDrivers" min="0" value="1" style="width:100px"></div>
           <div><label>Count weekends as holiday days</label><select id="setWeekends" style="width:150px"><option value="no">No (Mon to Fri only)</option><option value="yes">Yes</option></select></div>
+          <div><label>Leave year starts</label><select id="setYearStart" style="width:150px">
+            <option value="01-01">1 January</option>
+            <option value="04-01">1 April</option>
+            <option value="04-06">6 April</option>
+            <option value="07-01">1 July</option>
+            <option value="09-01">1 September</option>
+            <option value="10-01">1 October</option>
+          </select></div>
         </div>
         <br>
         <button class="btn-red" onclick="saveSettings()">Save rules</button>
@@ -366,11 +382,12 @@ function exportCsv(){
     .map(r=>{
       const p=staffById(r.staffId)||{name:'(removed)',role:''};
       return [p.name,p.role,{holiday:'Holidays',banked:'Banked',unpaid:'Unpaid'}[r.type||'holiday'],
+        leaveYearLabel(leaveYearOf(r.start)),
         r.start,r.end,r.half||'',countDays(r.start,r.end,r.half),r.status,
         r.decidedBy||'',r.decidedAt?r.decidedAt.slice(0,10):'',(r.note||'').replace(/"/g,"'")];
     });
   if(!rows.length){ alert('No requests for '+year+'.'); return; }
-  const head=['Name','Role','Type','First day','Last day','Half','Days','Status','Decided by','Decided on','Note'];
+  const head=['Name','Role','Type','Leave year','First day','Last day','Half','Days','Status','Decided by','Decided on','Note'];
   const csv=[head,...rows].map(r=>r.map(c=>`"${c}"`).join(',')).join('\r\n');
   const blob=new Blob(['\ufeff'+csv],{type:'text/csv'});
   const a=document.createElement('a');
@@ -421,12 +438,39 @@ function offOn(ds, incPending){
     return ds>=r.start && ds<=r.end;
   });
 }
-function usedByType(id,type){
-  return db.requests.filter(r=>r.staffId===id && r.status==='approved' && (r.type||'holiday')===type)
+// ---- leave years ----
+// yearStart is MM-DD. A request belongs to the leave year its FIRST day falls in.
+function yearStart(){ return (db.settings && db.settings.yearStart) || '01-01'; }
+function leaveYearOf(dateStr){
+  const [y,m,d]=dateStr.split('-').map(Number);
+  const [sm,sd]=yearStart().split('-').map(Number);
+  return (m<sm || (m===sm && d<sd)) ? y-1 : y;
+}
+function leaveYearLabel(y){
+  if(yearStart()==='01-01') return String(y);
+  return y+'/'+String(y+1).slice(2);
+}
+function leaveYearRange(y){
+  const [sm,sd]=yearStart().split('-').map(Number);
+  const pad=n=>String(n).padStart(2,'0');
+  const start=`${y}-${pad(sm)}-${pad(sd)}`;
+  const endD=new Date(y+1, sm-1, sd); endD.setDate(endD.getDate()-1);
+  return {start, end:fmt(endD)};
+}
+function currentLeaveYear(){ return leaveYearOf(fmt(new Date())); }
+function allowanceFor(st,yr){
+  const v=st && st.allowances && st.allowances[String(yr)];
+  return (v!==undefined && v!==null) ? v : ((st && st.allowance) || 0);
+}
+let viewYear=null;   // which leave year the Staff tab is showing
+
+function usedByType(id,type,yr){
+  return db.requests.filter(r=>r.staffId===id && r.status==='approved' && (r.type||'holiday')===type
+      && (yr===undefined || leaveYearOf(r.start)===yr))
     .reduce((n,r)=>n+countDays(r.start,r.end,r.half),0);
 }
-function usedDays(id){
-  return usedByType(id,'holiday')+usedByType(id,'unpaid');
+function usedDays(id,yr){
+  return usedByType(id,'holiday',yr)+usedByType(id,'unpaid',yr);
 }
 function findClashes(staffId, start, end, ignoreId){
   const person=staffById(staffId); const out=[];
@@ -470,6 +514,8 @@ function pulse(prefix,id){
   const el=document.getElementById('fw_'+prefix+'_'+id);
   if(el){ el.classList.add('justsaved'); setTimeout(()=>el.classList.remove('justsaved'),700); }
 }
+function shiftYear(n){ viewYear=(viewYear===null?currentLeaveYear():viewYear)+n; renderAll(); }
+
 async function savePin(id){
   const v=document.getElementById('pn_'+id).value.trim();
   if(v && !/^\d{4,6}$/.test(v)){ alert('PIN must be 4 to 6 digits.'); return; }
@@ -503,11 +549,13 @@ async function addBlockout(){
 }
 async function delBlockout(id){ if(confirm('Remove this block-out period?')) await apiAction({action:'deleteBlockout', id}); }
 async function saveAllowance(id){
-  await apiAction({action:'setAllowance', id, allowance:document.getElementById('al_'+id).value});
+  await apiAction({action:'setAllowance', id, year:viewYear, allowance:document.getElementById('al_'+id).value});
   pulse('al',id);
 }
 async function saveSettings(){
+  viewYear=null;
   await apiAction({action:'settings',
+    yearStart:document.getElementById('setYearStart').value,
     maxAll:document.getElementById('setMaxAll').value,
     maxDrivers:document.getElementById('setMaxDrivers').value,
     weekends:document.getElementById('setWeekends').value});
@@ -599,10 +647,15 @@ function renderAll(){
     const c=findClashes(r.staffId,r.start,r.end,r.id);
     return `<tr>
       <td><b>${p.name}</b></td>
-      <td>${typeBadge(r.type)}</td>
+      <td>${typeBadge(r.type)}${leaveYearOf(r.start)!==currentLeaveYear()?`<span style="display:block;font-size:11px;font-weight:700;color:var(--warn);margin-top:3px">${leaveYearLabel(leaveYearOf(r.start))} allowance</span>`:''}</td>
       <td>${dateSpan(r)}</td>
       <td>${countDays(r.start,r.end,r.half)}</td>
-      <td>${c.length?`<span class="clash-inline">Clash on ${c.length} day${c.length>1?'s':''}</span>`:'<span style="color:var(--ok);font-weight:600;font-size:12px">Clear</span>'}</td>
+      <td>${c.length?`<span class="clash-inline">Clash on ${c.length} day${c.length>1?'s':''}</span>`:'<span style="color:var(--ok);font-weight:600;font-size:12px">Clear</span>'}
+        ${(()=>{const yr=leaveYearOf(r.start);
+          const left=allowanceFor(p,yr)-usedByType(r.staffId,'holiday',yr);
+          const need=(r.type||'holiday')==='holiday'?countDays(r.start,r.end,r.half):0;
+          if(!need) return '';
+          return `<span style="display:block;font-size:11px;color:${need>left?'var(--bad)':'var(--muted)'};margin-top:3px">${left} left in ${leaveYearLabel(yr)}${need>left?' - over allowance':''}</span>`;})()}</td>
       <td class="muted">${r.note||''}</td>
       <td style="white-space:nowrap">
         <button class="btn-red btn-sm" onclick="setStatus('${r.id}','approved')">Approve</button>
@@ -621,7 +674,7 @@ function renderAll(){
   const hist=db.requests.filter(r=>r.status!=='pending').sort((a,b)=>a.start<b.start?1:-1);
   document.getElementById('historyTable').innerHTML=hist.map(r=>{
     const p=staffById(r.staffId)||{name:'(removed)'};
-    return `<tr><td><b>${p.name}</b></td><td>${typeBadge(r.type)}</td><td>${dateSpan(r)}</td>
+    return `<tr><td><b>${p.name}</b></td><td>${typeBadge(r.type)}<span style="display:block;font-size:11px;color:var(--muted);margin-top:2px">${leaveYearLabel(leaveYearOf(r.start))}</span></td><td>${dateSpan(r)}</td>
       <td>${countDays(r.start,r.end,r.half)}</td><td><span class="pill ${r.status}">${r.status}</span></td>
       <td class="muted">${r.decidedBy?`${r.decidedBy}${r.decidedAt?', '+niceDate(r.decidedAt.slice(0,10)):''}`:''}</td>
       <td class="muted">${r.note||''}</td>
@@ -629,11 +682,21 @@ function renderAll(){
   }).join('');
   document.getElementById('historyEmpty').style.display=hist.length?'none':'block';
 
+  if(viewYear===null) viewYear=currentLeaveYear();
+  document.getElementById('yearLabel').textContent='Leave year '+leaveYearLabel(viewYear);
+  document.getElementById('allowHead').textContent='Holidays '+leaveYearLabel(viewYear);
+  {
+    const r=leaveYearRange(viewYear);
+    document.getElementById('yearRange').textContent=niceDate(r.start)+' to '+niceDate(r.end)
+      + (viewYear===currentLeaveYear()?' (current)':'');
+  }
   document.getElementById('staffTable').innerHTML=db.staff.map(s=>{
-    const usedHol=usedByType(s.id,'holiday');
-    const usedUnpaid=usedByType(s.id,'unpaid');
+    const yr=viewYear;
+    const usedHol=usedByType(s.id,'holiday',yr);
+    const usedUnpaid=usedByType(s.id,'unpaid',yr);
     const used=usedHol+usedUnpaid;
-    const rem=s.allowance-usedHol;
+    const allow=allowanceFor(s,yr);
+    const rem=allow-usedHol;
     return `<tr><td class="who"><b>${s.name}</b><span>${s.role}</span></td>
       <td><span class="fw ${s.pin?'stored':''}" id="fw_pn_${s.id}"><input type="text" inputmode="numeric" id="pn_${s.id}" value="${s.pin||''}" placeholder="none" maxlength="6" style="width:60px;padding:6px 8px;font-size:13px">
         <button class="btn-ghost btn-sm" onclick="savePin('${s.id}')">Save</button></span></td>
@@ -641,7 +704,7 @@ function renderAll(){
         <button class="btn-ghost btn-sm" onclick="saveEmail('${s.id}')">Save</button></span></td>
       <td><span class="fw ${s.mobile?'stored':''}" id="fw_mb_${s.id}"><input type="tel" id="mb_${s.id}" value="${s.mobile||''}" placeholder="none" style="width:130px;padding:6px 8px;font-size:13px">
         <button class="btn-ghost btn-sm" onclick="saveMobile('${s.id}')">Save</button></span></td>
-      <td><span class="fw stored" id="fw_al_${s.id}"><input type="number" id="al_${s.id}" value="${s.allowance}" min="0" style="width:60px;padding:6px 8px;font-size:13px">
+      <td><span class="fw stored" id="fw_al_${s.id}"><input type="number" id="al_${s.id}" value="${allow}" min="0" step="0.5" title="Allowance for leave year ${leaveYearLabel(yr)}" style="width:60px;padding:6px 8px;font-size:13px">
         <button class="btn-ghost btn-sm" onclick="saveAllowance('${s.id}')">Save</button></span></td>
       <td>${used}${usedUnpaid?` <span class="muted" style="font-size:12px">(${usedUnpaid} unpaid)</span>`:''}</td>
       <td class="bal ${rem<0?'neg':''}"><b>${rem}</b></td>
@@ -659,6 +722,7 @@ function renderAll(){
   document.getElementById('setMaxAll').value=db.settings.maxAll;
   document.getElementById('setMaxDrivers').value=db.settings.maxDrivers;
   document.getElementById('setWeekends').value=db.settings.weekends;
+  document.getElementById('setYearStart').value=yearStart();
 
   document.getElementById('statPending').textContent=pending.length;
   document.getElementById('statOffToday').textContent=offOn(fmt(new Date()),false).length;
